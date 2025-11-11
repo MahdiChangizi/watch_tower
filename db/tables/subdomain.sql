@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS subdomains (
   program_name VARCHAR(255),
   subdomain VARCHAR(255),
   scope VARCHAR(255),
-  providers JSONB,
+  provider VARCHAR(255),
   created_date TIMESTAMP DEFAULT now(),
   last_update TIMESTAMP DEFAULT now(),
   UNIQUE (program_name, subdomain)

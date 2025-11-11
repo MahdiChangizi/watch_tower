@@ -1,4 +1,5 @@
 <?php
+namespace App\Services;
 
 use App\Tools\SendDiscordMessage;
 use App\Helpers\Helpers;
@@ -29,13 +30,15 @@ class Http {
         string $final_url,
         string $favicon
     ): bool {
-        $now = (new DateTime())->format('Y-m-d H:i:s');
+        $now = Helpers::current_time();
 
         // get program name related to scope
-        $stmt = $this->db->prepare("SELECT program_name FROM programs WHERE :scope = ANY(scopes) LIMIT 1");
-        $stmt->execute([':scope' => $scope]);
-        $programRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        $scopeJson = json_encode([$scope]); // e.g. '["example.com"]'
+        $stmt = $this->db->prepare("SELECT program_name FROM programs WHERE scopes @> :scope_json::jsonb LIMIT 1");
+        $stmt->execute([':scope_json' => $scopeJson]);
+        $programRow = $stmt->fetch(\PDO::FETCH_ASSOC);
         $programName = $programRow['program_name'] ?? $scope;
+
 
         // prepare json fields
         $ips_json = json_encode($ips, JSON_UNESCAPED_UNICODE);
@@ -45,7 +48,7 @@ class Http {
         // 2) check record existence
         $stmt = $this->db->prepare("SELECT * FROM http WHERE subdomain = :subdomain LIMIT 1");
         $stmt->execute([':subdomain' => $subdomain]);
-        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+        $existing = $stmt->fetch(\PDO::FETCH_ASSOC);
 
         if ($existing) {
             // check for changes

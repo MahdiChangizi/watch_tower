@@ -1,4 +1,7 @@
 <?php
+
+namespace App\Services;
+use PDO;
 require_once __DIR__ . '/../../public/index.php';
 
 
@@ -43,5 +46,11 @@ class Program {
             ]);
             return true;
         }
+    }
+
+    public function get_all_programs(): array {
+        $stmt = $this->db->prepare("SELECT * FROM programs");
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
