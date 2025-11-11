@@ -35,10 +35,15 @@ class Enurmation {
 
         
         # Tools
-        $subfinder = new Subfinder($tmpFile, true); 
+        $subfinder = new Subfinder($tmpFile, true);
+        $chaos = new \App\Tools\Chaos($tmpFile);
+        $crtsh = new \App\Tools\Crtsh($tmpFile);
+
+        $all = array_merge($subfinder->getSubdomains(), $chaos->getSubdomains(), $crtsh->getSubdomains());
+        $all = array_unique($all);
         
         
-        foreach ($subfinder->getSubdomains() as $subdomain) {
+        foreach ($all as $subdomain) {
             // save all domain in database
             $this->subdomain->upsert_subdomain($program['program_name'], $subdomain, 'subfinder');
         }

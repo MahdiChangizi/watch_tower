@@ -6,11 +6,9 @@ class SendDiscordMessage {
     private ?string $webhook;
 
     public function __construct() {
-        // سعی می‌کنیم از getenv هم بخوانیم چون بعضی محیط‌ها از اون استفاده می‌کنند
         $this->webhook = getenv('WEBHOOK_URL') ?: ($_ENV['WEBHOOK_URL'] ?? null);
 
         if (!$this->webhook) {
-            // بهتره throw کنیم تا قابل catch باشه در caller بجای die کردن
             throw new \RuntimeException("WEBHOOK_URL not set in environment");
         }
     }

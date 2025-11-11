@@ -45,8 +45,6 @@ class Subdomain {
                 ':provider' => $provider,
                 ':scope' => $program_name
             ]);
-
-            $this->message->send("```New subdomain '$subdomain_name' added to program '$program_name' via provider '$provider'```");
         }
     }
 
