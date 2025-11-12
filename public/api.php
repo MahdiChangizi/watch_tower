@@ -58,7 +58,7 @@ $resource_id = $path_parts[1] ?? null;
 
 // Helper function to parse JSONB fields
 function parse_jsonb_fields($records) {
-    $jsonb_fields = ['scopes', 'ooscopes', 'config', 'ips', 'tech', 'headers', 'cdn'];
+    $jsonb_fields = ['scopes', 'ooscopes', 'config', 'ips', 'tech', 'headers', 'cdn', 'metadata'];
     
     foreach ($records as &$record) {
         foreach ($jsonb_fields as $field) {
@@ -190,6 +190,43 @@ try {
                 send_text(implode("\n", $domains));
             }
             break;
+        
+        case 'ports':
+            $conditions = [];
+            $params = [];
+
+            if ($program_name) {
+                $conditions[] = "program_name = :program_name";
+                $params[':program_name'] = $program_name;
+            }
+
+            if ($domain) {
+                $conditions[] = "subdomain LIKE :domain";
+                $params[':domain'] = '%' . $domain . '%';
+            }
+
+            $where_clause = !empty($conditions) ? 'WHERE ' . implode(' AND ', $conditions) : '';
+            $stmt = $db->prepare("SELECT * FROM ports $where_clause ORDER BY last_update DESC, port ASC");
+            $stmt->execute($params);
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $data = parse_jsonb_fields($data);
+
+            if ($is_json) {
+                send_json(['ports' => $data]);
+            } else {
+                $entries = array_map(function ($row) {
+                    return sprintf(
+                        '%s:%s (%s/%s)',
+                        $row['subdomain'] ?? '',
+                        $row['port'] ?? '',
+                        $row['protocol'] ?? '',
+                        $row['service'] ?? ''
+                    );
+                }, $data);
+
+                send_text(implode("\n", array_filter($entries)));
+            }
+            break;
             
         case 'live-subdomains':
         case 'lives':
@@ -267,6 +304,7 @@ try {
                         'GET /api.php/subdomains?program_name=xxx&domain=xxx' => 'Get subdomains (optional filters)',
                         'GET /api.php/http?program_name=xxx&domain=xxx' => 'Get HTTP services (optional filters)',
                         'GET /api.php/live-subdomains?program_name=xxx&domain=xxx' => 'Get live subdomains (optional filters)',
+                        'GET /api.php/ports?program_name=xxx&domain=xxx' => 'Get discovered open ports (optional filters)',
                     ],
                     'parameters' => [
                         'json' => 'Response format: "true" (default) or "false" for plain text',
@@ -275,7 +313,7 @@ try {
                     ]
                 ]);
             } else {
-                send_text("Watch Tower API v1.0.0\n\nAvailable endpoints:\n- GET /api.php/programs\n- GET /api.php/programs/{name}\n- GET /api.php/all\n- GET /api.php/subdomains\n- GET /api.php/http\n- GET /api.php/live-subdomains\n\nUse ?json=true (default) or ?json=false\nUse ?program_name=xxx to filter by program\nUse ?domain=xxx to filter by domain");
+                send_text("Watch Tower API v1.0.0\n\nAvailable endpoints:\n- GET /api.php/programs\n- GET /api.php/programs/{name}\n- GET /api.php/all\n- GET /api.php/subdomains\n- GET /api.php/http\n- GET /api.php/live-subdomains\n- GET /api.php/ports\n\nUse ?json=true (default) or ?json=false\nUse ?program_name=xxx to filter by program\nUse ?domain=xxx to filter by domain");
             }
             break;
     }

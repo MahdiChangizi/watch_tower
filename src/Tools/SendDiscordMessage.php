@@ -24,7 +24,7 @@ final class SendDiscordMessage
 
     public static function createOrNull(): ?self
     {
-        $webhook = getenv('WEBHOOK_URL') ?? ($_ENV['WEBHOOK_URL'] ?? null);
+        $webhook = $_ENV['WEBHOOK_URL'];
         if (!$webhook) {
             error_log('SendDiscordMessage: WEBHOOK_URL not configured; notifications disabled.');
             return null;
