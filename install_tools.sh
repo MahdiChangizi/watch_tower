@@ -19,10 +19,13 @@ sudo apt-get install composer -y
 sudo apt-get install postgresql -y
 sudo apt-get install postgresql-client -y
 
-#config postgresql
+# config postgresql
 sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'mahdi3276';"
 sudo -u postgres psql -c "CREATE DATABASE watch;"
 
+
+# install git
+sudo apt-get install git -y
 
 # install tools
 go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
@@ -47,7 +50,7 @@ END
 }" >> ~/.zshrc
 
 # alias for nuclei
-echo "alias watch_nuclei='php $(pwd)/src/Nuclei/program.php'" >> ~/.zshrc
+echo "alias watch_nuclei='php /var/www/watch_tower/src/Nuclei/program.php'" >> ~/.zshrc
 
 echo 'export PDCP_API_KEY="75880f7a-04b5-4c87-9a70-a979cc8d5d2b"' >> ~/.zshrc
 source ~/.zshrc
