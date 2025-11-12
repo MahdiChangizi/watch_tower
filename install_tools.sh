@@ -33,6 +33,9 @@ go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 go install -v github.com/projectdiscovery/chaos-client/cmd/chaos@latest
 go install github.com/samogod/samoscout@latest
+
+# naabu
+sudo apt install libpcap-dev -y
 go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
 
 
