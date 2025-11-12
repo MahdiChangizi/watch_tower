@@ -1,84 +1,101 @@
 <?php
-namespace App\Ns;
-require_once __DIR__ . '/../../public/index.php';
+declare(strict_types=1);
 
+namespace App\Ns;
+
+use App\Helpers\Helpers;
+use App\Services\LiveSubdomain;
 use App\Services\Program;
 use App\Services\Subdomain;
 use App\Tools\Dnsx;
-use App\Services\LiveSubdomain;
 
-class NameResolotion {
-    // Name resolution for all subdomains for all programs with dnsx
-    public function name_resolotion_all_programs(): void {
-        $programService = new Program();
-        $subdomainService = new Subdomain();
-        $liveSubdomainService = new LiveSubdomain();
+final class NameResolotion
+{
+    private const GREEN = "\033[0;32m";
+    private const RESET = "\033[0m";
 
-        $programs = $programService->get_all_programs();
+    private Program $programService;
+    private Subdomain $subdomainService;
+    private LiveSubdomain $liveService;
+    private Helpers $helper;
 
-        foreach ($programs as $program) {
-            echo "[+] Program: " . "\033[0;32m" . $program['program_name'] . "\033[0m" . "\n";
+    public function __construct(
+        ?Program $programService = null,
+        ?Subdomain $subdomainService = null,
+        ?LiveSubdomain $liveService = null,
+        ?Helpers $helper = null
+    ) {
+        $this->programService = $programService ?? new Program();
+        $this->subdomainService = $subdomainService ?? new Subdomain();
+        $this->liveService = $liveService ?? new LiveSubdomain();
+        $this->helper = $helper ?? new Helpers();
+    }
 
-            // get all subdomains for the program
-            $subdomains = $subdomainService->get_subdomains_by_program($program['program_name']);
-
-            $subdomainList = [];
-            foreach ($subdomains as $subdomain) {
-                $line = trim($subdomain['subdomain']);
-                if ($line !== '') {
-                    $subdomainList[] = $line;
-                }
-            }
-
-            if (empty($subdomainList)) {
-                echo "No valid subdomains found for program: " . $program['program_name'] . "\n";
+    public function name_resolotion_all_programs(): void
+    {
+        foreach ($this->programService->get_all_programs() as $program) {
+            $programName = (string) ($program['program_name'] ?? '');
+            if ($programName === '') {
                 continue;
             }
 
-            // create temporary file for dnsx input
-            $rand = rand();
-            $tmpFile = '/tmp/subdomains_' . $rand . '.txt';
-            file_put_contents($tmpFile, implode("\n", $subdomainList) . "\n");
+            echo sprintf("[+] Program: %s%s%s\n", self::GREEN, $programName, self::RESET);
 
-            // run dnsx
-            $dnsx = new Dnsx($tmpFile);
-            $resolvedDomains = $dnsx->getResolvedDomains();
+            $subdomains = $this->subdomainService->get_subdomains_by_program($programName);
+            $subdomainList = $this->extractSubdomains($subdomains);
 
-            if (empty($resolvedDomains)) {
-                echo "No resolved domains returned by dnsx for program: " . $program['program_name'] . "\n";
-                unlink($tmpFile);
+            if (!$subdomainList) {
+                echo sprintf("    [!] No valid subdomains found for program: %s\n", $programName);
                 continue;
             }
 
-            foreach ($resolvedDomains as $dnsData) {
-                $host = $dnsData['host'] ?? null;
-                $ips = $dnsData['ips'] ?? [];
-                $cnames = $dnsData['cnames'] ?? [];
+            $tmpFile = $this->helper->create_temp_file($subdomainList, 'dnsx');
 
-                if (!$host) {
-                    // echo "Skipping empty host entry.\n";
+            try {
+                $dnsx = new Dnsx($tmpFile);
+                $resolvedDomains = $dnsx->getResolvedDomains();
+
+                if (!$resolvedDomains) {
+                    echo sprintf("    [!] No resolved domains returned by dnsx for program: %s\n", $programName);
                     continue;
                 }
 
-                if (empty($ips) && empty($cnames)) {
-                    // echo "No DNS resolution for: {$host}\n";
-                    continue;
+                foreach ($resolvedDomains as $dnsData) {
+                    $host = $dnsData['host'] ?? null;
+                    if (!$host) {
+                        continue;
+                    }
+
+                    $ips = $dnsData['ips'] ?? [];
+                    $cnames = $dnsData['cnames'] ?? [];
+
+                    if (!$ips && !$cnames) {
+                        continue;
+                    }
+
+                    $this->liveService->upsert_lives(
+                        $programName,
+                        $host,
+                        is_array($ips) ? $ips : [],
+                        is_array($cnames) ? $cnames : []
+                    );
                 }
-
-                // upsert resolved domain into database
-                $liveSubdomainService->upsert_lives(
-                    $program['program_name'],
-                    $host,
-                    $ips,
-                    $cnames
-                );
-
-                
+            } finally {
+                $this->helper->delete_temp_file($tmpFile);
             }
-
-            // remove temporary file
-            unlink($tmpFile);
         }
     }
-}
 
+    private function extractSubdomains(array $rows): array
+    {
+        $result = [];
+        foreach ($rows as $row) {
+            $value = strtolower(trim((string) ($row['subdomain'] ?? '')));
+            if ($value !== '') {
+                $result[] = $value;
+            }
+        }
+
+        return array_values(array_unique($result));
+    }
+}

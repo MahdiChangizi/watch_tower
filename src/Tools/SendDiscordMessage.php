@@ -1,60 +1,81 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Tools;
 
-class SendDiscordMessage {
+use RuntimeException;
+
+final class SendDiscordMessage
+{
+    private const USER_AGENT = 'watch_tower/1.0';
+
     private ?string $webhook;
 
-    public function __construct() {
-        $this->webhook = getenv('WEBHOOK_URL') ?: ($_ENV['WEBHOOK_URL'] ?? null);
+    public function __construct(?string $webhook = null)
+    {
+        $this->webhook = $webhook
+            ?? getenv('WEBHOOK_URL')
+            ?? ($_ENV['WEBHOOK_URL'] ?? null);
 
-        if (!$this->webhook) {
-            throw new \RuntimeException("WEBHOOK_URL not set in environment");
+        if ($this->webhook === false || $this->webhook === '') {
+            $this->webhook = null;
         }
     }
 
+    public static function createOrNull(): ?self
+    {
+        $webhook = getenv('WEBHOOK_URL') ?? ($_ENV['WEBHOOK_URL'] ?? null);
+        if (!$webhook) {
+            error_log('SendDiscordMessage: WEBHOOK_URL not configured; notifications disabled.');
+            return null;
+        }
+
+        return new self($webhook);
+    }
+
     /**
-     * Send a message to Discord webhook.
-     *
      * @param string $message Plain text or markdown content
-     * @return bool True on success (HTTP 204), false on failure
      */
-    public function send(string $message): bool {
-        $payload = json_encode([
-            'content' => $message
-        ], JSON_UNESCAPED_UNICODE);
+    public function send(string $message): bool
+    {
+        if (!$this->webhook) {
+            return false;
+        }
+
+        $payload = json_encode(['content' => $message], JSON_UNESCAPED_UNICODE);
+        if ($payload === false) {
+            throw new RuntimeException('Unable to encode Discord payload.');
+        }
 
         $ch = curl_init($this->webhook);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'User-Agent: watch_tower/1.0'
+        curl_setopt_array($ch, [
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'User-Agent: ' . self::USER_AGENT,
+            ],
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 10,
         ]);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
 
         $responseBody = curl_exec($ch);
-
         if ($responseBody === false) {
-            error_log("SendDiscordMessage: curl_exec error: " . curl_error($ch));
+            error_log('SendDiscordMessage: curl_exec error: ' . curl_error($ch));
             curl_close($ch);
             return false;
         }
 
-        // curl_getinfo with RESPONSE_CODE (works on modern libcurl)
         $httpCode = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         if ($httpCode === null) {
-            // fallback to older constant
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         }
 
         curl_close($ch);
 
-        if ((int)$httpCode !== 204) {
-            // Discord returns 204 No Content on success for simple webhook posts
-            error_log("SendDiscordMessage: unexpected status code {$httpCode}. Response body: " . $responseBody);
+        if ((int) $httpCode !== 204) {
+            error_log("SendDiscordMessage: unexpected status code {$httpCode}. Response body: {$responseBody}");
             return false;
         }
 

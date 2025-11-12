@@ -17,7 +17,6 @@ sudo apt-get install apache2 php php-cli php-fpm php-json php-pdo php-pgsql php-
 sudo apt-get install postgresql-client -y
 sudo apt-get install composer -y
 sudo apt-get install postgresql -y
-sudo apt-get install postgresql-client -y
 
 # config postgresql
 sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'mahdi3276';"
@@ -61,13 +60,13 @@ source $HOME/.zshrc
 
 # get access to php and apache2 files
 sudo chmod -R 777 .
-sudo chmod -R 777 /var/www/html
-sudo chmod -R 777 /var/www/html/watch
-sudo chmod -R 777 /var/www/html/watch/public
-sudo chmod -R 777 /var/www/html/watch/src
-sudo chmod -R 777 /var/www/html/watch/db
-sudo chmod -R 777 /var/www/html/watch/tools
-sudo chmod -R 777 /var/www/html/watch/src/Nuclei
-sudo chmod -R 777 /var/www/html/watch/src/Tools
-sudo chmod -R 777 /var/www/html/watch/src/Services
-sudo chmod -R 777 /var/www/html/watch/src/Enum
+sudo chmod -R 777 /var/www
+sudo chmod -R 777 /var/www/watch_tower
+sudo chmod -R 777 /var/www/watch_tower/public
+sudo chmod -R 777 /var/www/watch_tower/src
+sudo chmod -R 777 /var/www/watch_tower/db
+sudo chmod -R 777 /var/www/watch_tower/tools
+sudo chmod -R 777 /var/www/watch_tower/src/Nuclei
+sudo chmod -R 777 /var/www/watch_tower/src/Tools
+sudo chmod -R 777 /var/www/watch_tower/src/Services
+sudo chmod -R 777 /var/www/watch_tower/src/Enum

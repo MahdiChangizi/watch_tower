@@ -1,6 +1,6 @@
 {
     "program_name": "discourse",
-    "scopes":["discourse.org"],
+    "scopes":["discourse.org", "discourse.com"],
     "ooscopes": [],
     "config": {
         "notify_on_change": true

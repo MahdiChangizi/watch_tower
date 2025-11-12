@@ -1,79 +1,109 @@
 <?php
+declare(strict_types=1);
+
 namespace App\Enum;
-require_once __DIR__ . '/../../public/index.php';
 
+use App\Helpers\Helpers;
 use App\Services\Program;
-use App\Tools\Subfinder;
 use App\Services\Subdomain;
+use App\Tools\Chaos;
+use App\Tools\Crtsh;
+use App\Tools\Samoscout;
+use App\Tools\Subfinder;
 
-class Enurmation {
-    public $program = null;
-    public $subdomain = null;
-    const GREAN = "\033[0;32m";
+final class Enurmation
+{
+    private const GREEN = "\033[0;32m";
+    private const RESET = "\033[0m";
 
-    public function __construct() {
-        $this->program = new Program();
-        $this->subdomain = new Subdomain();
+    private Program $programService;
+    private Subdomain $subdomainService;
+    private Helpers $helper;
+
+    public function __construct(?Program $programService = null, ?Subdomain $subdomainService = null, ?Helpers $helper = null)
+    {
+        $this->programService = $programService ?? new Program();
+        $this->subdomainService = $subdomainService ?? new Subdomain();
+        $this->helper = $helper ?? new Helpers();
     }
 
-    public function enurmation_all_programs(): void {
-        $programs = $this->program->get_all_programs();
+    public function enurmation_all_programs(): void
+    {
+        $programs = $this->programService->get_all_programs();
 
         foreach ($programs as $program) {
-            $programName = $program['program_name'];
-            echo "[+] Program: " . self::GREAN . $programName . "\n";
-
-            $scopes = $program['scopes'];
-            if (is_string($scopes)) {
-                $scopes = json_decode($scopes, true);
-            }
-
-            if (empty($scopes) || !is_array($scopes)) {
-                echo "    [!] No scopes defined for program: {$programName}\n";
+            $programName = (string) ($program['program_name'] ?? '');
+            if ($programName === '') {
                 continue;
             }
 
-            $scopes = array_filter(array_map('trim', $scopes), fn($value) => $value !== '');
-            if (empty($scopes)) {
-                echo "    [!] Scopes list is empty after filtering for program: {$programName}\n";
+            echo sprintf("[+] Program: %s%s%s\n", self::GREEN, $programName, self::RESET);
+
+            $scopes = $this->normalizeScopes($program['scopes'] ?? []);
+            if (!$scopes) {
+                echo sprintf("    [!] No valid scopes for program: %s\n", $programName);
                 continue;
             }
 
-            $rand = rand();
-            $tmpFile = '/tmp/domains_' . $programName . '_' . $rand . '.txt';
-            file_put_contents($tmpFile, implode("\n", $scopes) . "\n");
+            $tmpFile = $this->helper->create_temp_file($scopes, $this->sanitizeFileName($programName));
 
             try {
                 $sources = [
                     'subfinder' => new Subfinder($tmpFile, true),
-                    'chaos' => new \App\Tools\Chaos($tmpFile),
-                    'crtsh' => new \App\Tools\Crtsh($tmpFile),
-                    'samoscout' => new \App\Tools\Samoscout($tmpFile),
+                    'chaos' => new Chaos($tmpFile),
+                    'crtsh' => new Crtsh($tmpFile),
+                    'samoscout' => new Samoscout($tmpFile),
                 ];
 
                 foreach ($sources as $provider => $tool) {
-                    $subdomains = $tool->getSubdomains();
-                    if (empty($subdomains)) {
-                        continue;
-                    }
-
-                    $subdomains = array_unique(array_map(function ($value) {
-                        return strtolower(trim($value));
-                    }, $subdomains));
-
-                    foreach ($subdomains as $subdomain) {
-                        if ($subdomain === '') {
-                            continue;
-                        }
-                        $this->subdomain->upsert_subdomain($programName, $subdomain, $provider);
-                    }
+                    $this->ingestSubdomains($programName, $tool->getSubdomains(), $provider);
                 }
             } finally {
-                if (file_exists($tmpFile)) {
-                    unlink($tmpFile);
-                }
+                $this->helper->delete_temp_file($tmpFile);
             }
         }
     }
 
+    private function normalizeScopes($scopes): array
+    {
+        if (is_string($scopes)) {
+            $decoded = json_decode($scopes, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $scopes = $decoded;
+            }
+        }
+
+        if (!is_array($scopes)) {
+            return [];
+        }
+
+        $filtered = array_map(static function ($value) {
+            return strtolower(trim((string) $value));
+        }, $scopes);
+
+        $filtered = array_filter($filtered, static fn($value) => $value !== '');
+
+        return array_values(array_unique($filtered));
+    }
+
+    private function ingestSubdomains(string $programName, array $subdomains, string $provider): void
+    {
+        if (!$subdomains) {
+            return;
+        }
+
+        foreach ($subdomains as $subdomain) {
+            $normalized = strtolower(trim((string) $subdomain));
+            if ($normalized === '') {
+                continue;
+            }
+
+            $this->subdomainService->upsert_subdomain($programName, $normalized, $provider);
+        }
+    }
+
+    private function sanitizeFileName(string $value): string
+    {
+        return preg_replace('/[^a-z0-9_\-]+/i', '_', $value) ?? 'program';
+    }
 }

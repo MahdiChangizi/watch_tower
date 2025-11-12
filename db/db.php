@@ -1,38 +1,50 @@
 <?php
+declare(strict_types=1);
 
-use PDO\PDOException;
-
-
-class Database
+final class Database
 {
-    private static ?PDO $connection = null;
+    private static ?\PDO $connection = null;
 
-    public static function connect(): PDO
+    public static function connect(): \PDO
     {
-        if (self::$connection === null) {
-
-            $host = $_ENV['DB_HOST'] ?? 'localhost';
-            $port = $_ENV['DB_PORT'] ?? '5432';
-            $dbname = $_ENV['DB_NAME'] ?? 'watch';
-            $user = $_ENV['DB_USERNAME'] ?? 'postgres';
-            $pass = $_ENV['DB_PASSWORD'] ?? 'mahdi3276';
-
-            try {
-                self::$connection = new PDO("pgsql:host=$host;port=$port;dbname=$dbname", $user, $pass);
-                self::$connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            } catch (PDOException $e) {
-                die("Database connection error: " . $e->getMessage());
-            }
+        if (self::$connection instanceof \PDO) {
+            return self::$connection;
         }
+
+        $host = $_ENV['DB_HOST'] ?? 'localhost';
+        $port = $_ENV['DB_PORT'] ?? '5432';
+        $dbname = $_ENV['DB_NAME'] ?? 'watch';
+        $user = $_ENV['DB_USERNAME'] ?? 'postgres';
+        $pass = $_ENV['DB_PASSWORD'] ?? 'mahdi3276';
+
+        try {
+            $dsn = sprintf('pgsql:host=%s;port=%s;dbname=%s', $host, $port, $dbname);
+            $connection = new \PDO($dsn, $user, $pass, [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+            ]);
+        } catch (\PDOException $exception) {
+            throw new \PDOException('Database connection error: ' . $exception->getMessage(), (int) $exception->getCode(), $exception);
+        }
+
+        self::$connection = $connection;
 
         return self::$connection;
     }
 
-    public static function createTables() {
+    public static function createTables(): void
+    {
         $db = self::connect();
-        $db->exec(file_get_contents(__DIR__ . '/tables/program.sql'));
-        $db->exec(file_get_contents(__DIR__ . '/tables/subdomain.sql'));
-        $db->exec(file_get_contents(__DIR__ . '/tables/live_subdomain.sql'));
-        $db->exec(file_get_contents(__DIR__ . '/tables/http.sql'));
+        foreach (['program', 'subdomain', 'live_subdomain', 'http'] as $table) {
+            $path = __DIR__ . '/tables/' . $table . '.sql';
+            if (!is_file($path)) {
+                throw new \RuntimeException(sprintf('Missing schema file: %s', $path));
+            }
+            $sql = file_get_contents($path);
+            if ($sql === false) {
+                throw new \RuntimeException(sprintf('Unable to read schema file: %s', $path));
+            }
+            $db->exec($sql);
+        }
     }
 }

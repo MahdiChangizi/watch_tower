@@ -1,21 +1,24 @@
 <?php
+declare(strict_types=1);
+
 namespace App\Services;
 
-use App\Tools\SendDiscordMessage;
 use App\Helpers\Helpers;
-require_once __DIR__ . '/../../public/index.php';
+use App\Tools\SendDiscordMessage;
+use PDO;
+use PDOException;
 
+final class Http
+{
+    private PDO $db;
+    private Helpers $helper;
+    private ?SendDiscordMessage $messenger;
 
-class Http {
-    public $db = null;
-    public $message = null;
-    public $helper = null;
-
-    public function __construct() {
-        global $db;
-        $this->db = $db;
-        $this->message = new SendDiscordMessage();
-        $this->helper = new Helpers();
+    public function __construct(?PDO $db = null, ?Helpers $helper = null, ?SendDiscordMessage $messenger = null)
+    {
+        $this->db = $db ?? \Database::connect();
+        $this->helper = $helper ?? new Helpers();
+        $this->messenger = $messenger ?? SendDiscordMessage::createOrNull();
     }
 
     public function upsert_http(
@@ -30,81 +33,81 @@ class Http {
         string $final_url,
         string $favicon
     ): bool {
+        $program_name = trim($program_name);
+        $subdomain = strtolower(trim($subdomain));
+
+        if ($program_name === '' || $subdomain === '') {
+            return false;
+        }
+
+        $scope = $this->extractScope($subdomain);
         $now = Helpers::current_time();
 
-        // Extract domain from subdomain for scope (e.g., "sub.example.com" -> "example.com")
-        $parts = explode('.', $subdomain);
-        $scope = count($parts) >= 2 ? implode('.', array_slice($parts, -2)) : $subdomain;
-
-
-        // prepare json fields
         $ips_json = json_encode($ips, JSON_UNESCAPED_UNICODE);
         $tech_json = json_encode($tech, JSON_UNESCAPED_UNICODE);
         $headers_json = json_encode($headers, JSON_UNESCAPED_UNICODE);
 
-        // 2) check record existence
-        $stmt = $this->db->prepare("SELECT * FROM http WHERE subdomain = :subdomain LIMIT 1");
-        $stmt->execute([':subdomain' => $subdomain]);
-        $existing = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($ips_json === false || $tech_json === false || $headers_json === false) {
+            throw new \RuntimeException('Failed to encode http metadata as JSON.');
+        }
 
-        if ($existing) {
-            // check for changes
-            if (($existing['title'] ?? '') !== $title) {
-                $this->message->send("```'{$subdomain}' title changed from '{$existing['title']}' to '{$title}'```");
-                error_log("[".$this->helper::current_time()."] changed title for subdomain: {$subdomain}");
-            }
-
-            if ((int)$existing['status_code'] !== $status_code) {
-                $this->message->send("```'{$subdomain}' status code changed from '{$existing['status_code']}' to '{$status_code}'```");
-                error_log("[".$this->helper::current_time()."] changed status code for subdomain: {$subdomain}");
-            }
-
-            if (($existing['favicon'] ?? '') !== $favicon) {
-                $this->message->send("```'{$subdomain}' favhash changed from '{$existing['favicon']}' to '{$favicon}'```");
-                error_log("[".$this->helper::current_time()."] changed favhash for subdomain: {$subdomain}");
-            }
-
-            // update records
-            $sqlUpdate = "UPDATE http SET 
-                program_name = :program_name,
-                scope = :scope,
-                ips = :ips::jsonb,
-                tech = :tech::jsonb,
-                title = :title,
-                status_code = :status_code,
-                headers = :headers::jsonb,
-                url = :url,
-                final_url = :final_url,
-                favicon = :favicon,
-                last_update = :last_update
-                WHERE subdomain = :subdomain";
-            $stmt = $this->db->prepare($sqlUpdate);
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT title, status_code, favicon FROM http WHERE program_name = :program_name AND subdomain = :subdomain LIMIT 1'
+            );
             $stmt->execute([
                 ':program_name' => $program_name,
-                ':scope' => $scope,
-                ':ips' => $ips_json,
-                ':tech' => $tech_json,
-                ':title' => $title,
-                ':status_code' => $status_code,
-                ':headers' => $headers_json,
-                ':url' => $url,
-                ':final_url' => $final_url,
-                ':favicon' => $favicon,
-                ':last_update' => $now,
                 ':subdomain' => $subdomain,
             ]);
-            return true;
-        } else {
-            // new record
-            $sqlInsert = "INSERT INTO http (
-                program_name, subdomain, scope, ips, tech, title, status_code,
-                headers, url, final_url, favicon, created_date, last_update
-            ) VALUES (
-                :program_name, :subdomain, :scope, :ips::jsonb, :tech::jsonb, :title,
-                :status_code, :headers::jsonb, :url, :final_url, :favicon, :created_date, :last_update
-            )";
-            $stmt = $this->db->prepare($sqlInsert);
-            $stmt->execute([
+            $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($existing) {
+                $this->notifyOnChanges($existing, $subdomain, $title, $status_code, $favicon);
+
+                $update = $this->db->prepare(
+                    'UPDATE http SET 
+                        scope = :scope,
+                        ips = :ips::jsonb,
+                        tech = :tech::jsonb,
+                        title = :title,
+                        status_code = :status_code,
+                        headers = :headers::jsonb,
+                        url = :url,
+                        final_url = :final_url,
+                        favicon = :favicon,
+                        last_update = :last_update
+                     WHERE program_name = :program_name AND subdomain = :subdomain'
+                );
+
+                $update->execute([
+                    ':scope' => $scope,
+                    ':ips' => $ips_json,
+                    ':tech' => $tech_json,
+                    ':title' => $title,
+                    ':status_code' => $status_code,
+                    ':headers' => $headers_json,
+                    ':url' => $url,
+                    ':final_url' => $final_url,
+                    ':favicon' => $favicon,
+                    ':last_update' => $now,
+                    ':program_name' => $program_name,
+                    ':subdomain' => $subdomain,
+                ]);
+
+                return true;
+            }
+
+            $insert = $this->db->prepare(
+                'INSERT INTO http (
+                    program_name, subdomain, scope, ips, tech, title, status_code,
+                    headers, url, final_url, favicon, created_date, last_update
+                ) VALUES (
+                    :program_name, :subdomain, :scope, :ips::jsonb, :tech::jsonb, :title,
+                    :status_code, :headers::jsonb, :url, :final_url, :favicon, :created_date, :last_update
+                )'
+            );
+
+            $insert->execute([
                 ':program_name' => $program_name,
                 ':subdomain' => $subdomain,
                 ':scope' => $scope,
@@ -120,9 +123,56 @@ class Http {
                 ':last_update' => $now,
             ]);
 
-            $this->message->send("```'{$subdomain}' (fresh http) has been added to '{$program_name}' program```");
-            error_log("[+] [".$this->helper::current_time()."] Inserted new http service: " . "\033[0;32m" . "{$subdomain}" . "\033[0m");
+            if ($this->messenger) {
+                $this->messenger->send(
+                    sprintf(
+                        "```%s (fresh http) added to '%s'```",
+                        $subdomain,
+                        $program_name
+                    )
+                );
+            }
+
+            error_log(sprintf('[%s] Inserted new http service: %s', $now, $subdomain));
+
             return true;
+        } catch (PDOException $exception) {
+            error_log('Http::upsert_http error: ' . $exception->getMessage());
+            return false;
         }
+    }
+
+    private function extractScope(string $subdomain): string
+    {
+        $parts = explode('.', $subdomain);
+        return count($parts) >= 2 ? implode('.', array_slice($parts, -2)) : $subdomain;
+    }
+
+    private function notifyOnChanges(array $existing, string $subdomain, string $title, int $status_code, string $favicon): void
+    {
+        if (!$this->messenger) {
+            return;
+        }
+
+        $changes = [];
+
+        if (($existing['title'] ?? '') !== $title) {
+            $changes[] = sprintf("title: '%s' -> '%s'", $existing['title'] ?? '', $title);
+        }
+
+        if ((int) ($existing['status_code'] ?? 0) !== $status_code) {
+            $changes[] = sprintf('status: %s -> %d', $existing['status_code'] ?? 'n/a', $status_code);
+        }
+
+        if (($existing['favicon'] ?? '') !== $favicon) {
+            $changes[] = sprintf("favhash: '%s' -> '%s'", $existing['favicon'] ?? '', $favicon);
+        }
+
+        if (!$changes) {
+            return;
+        }
+
+        $message = sprintf("```%s\n%s```", $subdomain, implode("\n", $changes));
+        $this->messenger->send($message);
     }
 }

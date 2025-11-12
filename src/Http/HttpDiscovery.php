@@ -26,14 +26,33 @@ class HttpDiscovery {
             $just_subdomains[] = $item['subdomain'];
         }
 
+        $just_subdomains = array_values(array_unique(array_filter(array_map(
+            static fn($value) => strtolower(trim((string) $value)),
+            $just_subdomains
+        ))));
+
+        if (!$just_subdomains) {
+            return;
+        }
+
         $tempFile = $this->helper->create_temp_file($just_subdomains, 'subdomain');
-        $httpx = new Httpx($tempFile);
-        $responses = $httpx->getHttpResponses();
+        $responses = [];
+        try {
+            $httpx = new Httpx($tempFile);
+            $responses = $httpx->getHttpResponses();
+        } finally {
+            $this->helper->delete_temp_file($tempFile);
+        }
 
         // Build a map by subdomain for quick lookup
         $subdomain_map = [];
         foreach ($live_subdomains as $item) {
-            $subdomain_map[$item['subdomain']] = $item;
+            $key = strtolower(trim((string) ($item['subdomain'] ?? '')));
+            if ($key === '') {
+                continue;
+            }
+
+            $subdomain_map[$key] = $item;
         }
 
         // Helper function to normalize ips to an array
@@ -59,6 +78,10 @@ class HttpDiscovery {
         };
 
         foreach ($responses as $response) {
+            if (!is_array($response)) {
+                continue;
+            }
+
             // httpx may have different fields; try to get Host correctly
             $url = $response['url'] ?? ($response['input'] ?? ($response['host'] ?? ''));
             $host = parse_url($url, PHP_URL_HOST);
@@ -74,8 +97,9 @@ class HttpDiscovery {
                 continue;
             }
 
-            if (isset($subdomain_map[$host])) {
-                $item = $subdomain_map[$host];
+            $normalizedHost = strtolower(trim($host));
+            if (isset($subdomain_map[$normalizedHost])) {
+                $item = $subdomain_map[$normalizedHost];
 
                 // Normalize ips before calling upsert_http
                 $ips_array = $normalizeIps($item['ips'] ?? null);
@@ -97,8 +121,6 @@ class HttpDiscovery {
                 // error_log("discover_http: host not found in subdomain_map: $host");
             }
         }
-
-        $this->helper->delete_temp_file($tempFile);
     }
 
 }
