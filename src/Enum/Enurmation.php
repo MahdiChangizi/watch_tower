@@ -19,33 +19,60 @@ class Enurmation {
     public function enurmation_all_programs(): void {
         $programs = $this->program->get_all_programs();
 
-        $allScopes = [];
-
         foreach ($programs as $program) {
-            echo "[+] Program: " . self::GREAN . $program['program_name'] . "\n";
-            $program['scopes'] = json_decode($program['scopes'], true);
-            foreach ($program['scopes'] as $scope) {
-                $allScopes[] = $scope;
+            $programName = $program['program_name'];
+            echo "[+] Program: " . self::GREAN . $programName . "\n";
+
+            $scopes = $program['scopes'];
+            if (is_string($scopes)) {
+                $scopes = json_decode($scopes, true);
             }
-        }
 
-        $rand = rand();
-        $tmpFile = '/tmp/domains_' . $rand . '.txt';
-        file_put_contents($tmpFile, implode("\n", $allScopes));
+            if (empty($scopes) || !is_array($scopes)) {
+                echo "    [!] No scopes defined for program: {$programName}\n";
+                continue;
+            }
 
-        
-        # Tools
-        $subfinder = new Subfinder($tmpFile, true);
-        $chaos = new \App\Tools\Chaos($tmpFile);
-        $crtsh = new \App\Tools\Crtsh($tmpFile);
+            $scopes = array_filter(array_map('trim', $scopes), fn($value) => $value !== '');
+            if (empty($scopes)) {
+                echo "    [!] Scopes list is empty after filtering for program: {$programName}\n";
+                continue;
+            }
 
-        $all = array_merge($subfinder->getSubdomains(), $chaos->getSubdomains(), $crtsh->getSubdomains());
-        $all = array_unique($all);
-        
-        
-        foreach ($all as $subdomain) {
-            // save all domain in database
-            $this->subdomain->upsert_subdomain($program['program_name'], $subdomain, 'subfinder');
+            $rand = rand();
+            $tmpFile = '/tmp/domains_' . $programName . '_' . $rand . '.txt';
+            file_put_contents($tmpFile, implode("\n", $scopes) . "\n");
+
+            try {
+                $sources = [
+                    'subfinder' => new Subfinder($tmpFile, true),
+                    'chaos' => new \App\Tools\Chaos($tmpFile),
+                    'crtsh' => new \App\Tools\Crtsh($tmpFile),
+                    'samoscout' => new \App\Tools\Samoscout($tmpFile),
+                ];
+
+                foreach ($sources as $provider => $tool) {
+                    $subdomains = $tool->getSubdomains();
+                    if (empty($subdomains)) {
+                        continue;
+                    }
+
+                    $subdomains = array_unique(array_map(function ($value) {
+                        return strtolower(trim($value));
+                    }, $subdomains));
+
+                    foreach ($subdomains as $subdomain) {
+                        if ($subdomain === '') {
+                            continue;
+                        }
+                        $this->subdomain->upsert_subdomain($programName, $subdomain, $provider);
+                    }
+                }
+            } finally {
+                if (file_exists($tmpFile)) {
+                    unlink($tmpFile);
+                }
+            }
         }
     }
 

@@ -1,16 +1,29 @@
 <?php
 
-require_once __DIR__ . '/../bootstrap.php';
+// require_once __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/../db/db.php';
-
-use PDO;
 
 // Initialize database connection
 $db = Database::connect();
 
-// Get query parameters
-$json_format = isset($_GET['json']) && strtolower($_GET['json']) === 'true';
-$program_name = $_GET['program_name'] ?? null;
+// Set CORS headers if needed
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+
+// Handle OPTIONS request
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+// Only allow GET requests (read-only API)
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+    http_response_code(405);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Method not allowed. Only GET requests are supported.']);
+    exit;
+}
 
 // Parse request path
 $request_uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -23,13 +36,25 @@ if (strpos($request_uri, $script_name) === 0) {
     $path = $request_uri;
 }
 
+// Remove leading/trailing slashes and clean up
 $path = trim($path, '/');
 $path = preg_replace('#^api\.php/?#', '', $path);
 $path = trim($path, '/');
 
-// Get resource from path
-$path_parts = explode('/', $path);
+// Get query parameters
+$json_param = $_GET['json'] ?? null;
+$is_json = ($json_param === null || strtolower($json_param) === 'true');
+$program_name = $_GET['program_name'] ?? null;
+$domain = $_GET['domain'] ?? null;
+
+// Get resource from path (handle /api/programs/name format)
+$path_parts = array_filter(explode('/', $path), function($part) {
+    return !empty($part);
+});
+$path_parts = array_values($path_parts); // Re-index array
+
 $resource = $path_parts[0] ?? '';
+$resource_id = $path_parts[1] ?? null;
 
 // Helper function to parse JSONB fields
 function parse_jsonb_fields($records) {
@@ -60,191 +85,202 @@ function extract_domains($data, $field_name = 'subdomain') {
     return $domains;
 }
 
+// Helper function to send JSON response
+function send_json($data, $status_code = 200) {
+    http_response_code($status_code);
+    header('Content-Type: application/json');
+    echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+}
+
+// Helper function to send text response
+function send_text($data, $status_code = 200) {
+    http_response_code($status_code);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo $data;
+}
+
 try {
     switch ($resource) {
         case 'programs':
-            $stmt = $db->prepare("SELECT * FROM programs ORDER BY created_date DESC");
-            $stmt->execute();
-            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $data = parse_jsonb_fields($data);
-            
-            if ($json_format) {
-                header('Content-Type: application/json');
-                echo json_encode(['programs' => $data], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            if ($resource_id) {
+                // Get specific program by name
+                $stmt = $db->prepare("SELECT * FROM programs WHERE program_name = :program_name LIMIT 1");
+                $stmt->execute([':program_name' => $resource_id]);
+                $data = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$data) {
+                    send_json(['error' => 'Program not found', 'code' => 404], 404);
+                    exit;
+                }
+                
+                $data = parse_jsonb_fields([$data])[0];
+                
+                if ($is_json) {
+                    send_json($data);
+                } else {
+                    send_text($data['program_name'] ?? '');
+                }
             } else {
-                // Return plain text list of program names
-                header('Content-Type: text/plain');
-                $programs = extract_domains($data, 'program_name');
-                echo implode("\n", $programs);
+                // Get all programs
+                $stmt = $db->prepare("SELECT * FROM programs ORDER BY created_date DESC");
+                $stmt->execute();
+                $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $data = parse_jsonb_fields($data);
+                
+                if ($is_json) {
+                    send_json(['programs' => $data]);
+                } else {
+                    $programs = extract_domains($data, 'program_name');
+                    send_text(implode("\n", $programs));
+                }
             }
             break;
             
         case 'subdomains':
+            $conditions = [];
+            $params = [];
+            
             if ($program_name) {
-                $stmt = $db->prepare("SELECT * FROM subdomains WHERE program_name = :program_name ORDER BY last_update DESC");
-                $stmt->execute([':program_name' => $program_name]);
-            } else {
-                $stmt = $db->prepare("SELECT * FROM subdomains ORDER BY last_update DESC");
-                $stmt->execute();
+                $conditions[] = "program_name = :program_name";
+                $params[':program_name'] = $program_name;
             }
+            
+            if ($domain) {
+                $conditions[] = "subdomain LIKE :domain";
+                $params[':domain'] = '%' . $domain . '%';
+            }
+            
+            $where_clause = !empty($conditions) ? 'WHERE ' . implode(' AND ', $conditions) : '';
+            $stmt = $db->prepare("SELECT * FROM subdomains $where_clause ORDER BY last_update DESC");
+            $stmt->execute($params);
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            if ($json_format) {
-                header('Content-Type: application/json');
-                echo json_encode(['subdomains' => $data], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            if ($is_json) {
+                send_json(['subdomains' => $data]);
             } else {
-                // Return plain text list of subdomains
-                header('Content-Type: text/plain');
                 $domains = extract_domains($data, 'subdomain');
-                echo implode("\n", $domains);
+                send_text(implode("\n", $domains));
             }
             break;
             
         case 'http':
+            $conditions = [];
+            $params = [];
+            
             if ($program_name) {
-                $stmt = $db->prepare("SELECT * FROM http WHERE program_name = :program_name ORDER BY last_update DESC");
-                $stmt->execute([':program_name' => $program_name]);
-            } else {
-                $stmt = $db->prepare("SELECT * FROM http ORDER BY last_update DESC");
-                $stmt->execute();
+                $conditions[] = "program_name = :program_name";
+                $params[':program_name'] = $program_name;
             }
+            
+            if ($domain) {
+                $conditions[] = "subdomain LIKE :domain";
+                $params[':domain'] = '%' . $domain . '%';
+            }
+            
+            $where_clause = !empty($conditions) ? 'WHERE ' . implode(' AND ', $conditions) : '';
+            $stmt = $db->prepare("SELECT * FROM http $where_clause ORDER BY last_update DESC");
+            $stmt->execute($params);
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             $data = parse_jsonb_fields($data);
             
-            if ($json_format) {
-                header('Content-Type: application/json');
-                echo json_encode(['http' => $data], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            if ($is_json) {
+                send_json(['http' => $data]);
             } else {
-                // Return plain text list of subdomains
-                header('Content-Type: text/plain');
                 $domains = extract_domains($data, 'subdomain');
-                echo implode("\n", $domains);
+                send_text(implode("\n", $domains));
             }
             break;
             
         case 'live-subdomains':
         case 'lives':
+            $conditions = [];
+            $params = [];
+            
             if ($program_name) {
-                $stmt = $db->prepare("SELECT * FROM live_subdomains WHERE program_name = :program_name ORDER BY last_update DESC");
-                $stmt->execute([':program_name' => $program_name]);
-            } else {
-                $stmt = $db->prepare("SELECT * FROM live_subdomains ORDER BY last_update DESC");
-                $stmt->execute();
+                $conditions[] = "program_name = :program_name";
+                $params[':program_name'] = $program_name;
             }
+            
+            if ($domain) {
+                $conditions[] = "subdomain LIKE :domain";
+                $params[':domain'] = '%' . $domain . '%';
+            }
+            
+            $where_clause = !empty($conditions) ? 'WHERE ' . implode(' AND ', $conditions) : '';
+            $stmt = $db->prepare("SELECT * FROM live_subdomains $where_clause ORDER BY last_update DESC");
+            $stmt->execute($params);
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             $data = parse_jsonb_fields($data);
             
-            if ($json_format) {
-                header('Content-Type: application/json');
-                echo json_encode(['live_subdomains' => $data], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            if ($is_json) {
+                send_json(['live_subdomains' => $data]);
             } else {
-                // Return plain text list of subdomains
-                header('Content-Type: text/plain');
                 $domains = extract_domains($data, 'subdomain');
-                echo implode("\n", $domains);
+                send_text(implode("\n", $domains));
             }
             break;
             
-        case 'openapi':
-        case 'swagger':
-        case 'api-docs':
-            // Serve OpenAPI specification
-            $swagger_file = __DIR__ . '/swagger.yaml';
-            if (file_exists($swagger_file)) {
-                header('Content-Type: application/x-yaml');
-                readfile($swagger_file);
+        case 'all':
+            // Get all programs and subdomains together
+            $programs_stmt = $db->prepare("SELECT * FROM programs ORDER BY created_date DESC");
+            $programs_stmt->execute();
+            $programs_data = $programs_stmt->fetchAll(PDO::FETCH_ASSOC);
+            $programs_data = parse_jsonb_fields($programs_data);
+            
+            $subdomains_stmt = $db->prepare("SELECT * FROM subdomains ORDER BY last_update DESC");
+            $subdomains_stmt->execute();
+            $subdomains_data = $subdomains_stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if ($is_json) {
+                send_json([
+                    'programs' => $programs_data,
+                    'subdomains' => $subdomains_data
+                ]);
             } else {
-                http_response_code(404);
-                echo "OpenAPI specification not found";
+                $output = [];
+                $output[] = "=== PROGRAMS ===";
+                foreach ($programs_data as $program) {
+                    $output[] = $program['program_name'] ?? '';
+                }
+                $output[] = "";
+                $output[] = "=== SUBDOMAINS ===";
+                foreach ($subdomains_data as $subdomain) {
+                    $output[] = $subdomain['subdomain'] ?? '';
+                }
+                send_text(implode("\n", $output));
             }
             break;
             
         case '':
         default:
-            // API documentation
-            if ($json_format) {
-                header('Content-Type: application/json');
-                echo json_encode([
-                    'message' => 'Watch Tower API',
+            // API information endpoint
+            if ($is_json) {
+                send_json([
+                    'name' => 'Watch Tower API',
                     'version' => '1.0.0',
-                    'documentation' => [
-                        'swagger_ui' => '/api-docs.html',
-                        'openapi_spec' => '/api.php/openapi',
-                        'swagger_spec' => '/swagger.yaml'
-                    ],
+                    'description' => 'REST API for reading data from Watch Tower database',
+                    'documentation' => '/swagger-ui.html',
                     'endpoints' => [
-                        'GET /api.php/programs?json=true' => 'Get all programs (JSON format)',
-                        'GET /api.php/programs?json=false' => 'Get all programs (plain text list)',
-                        'GET /api.php/subdomains?json=true&program_name=xxx' => 'Get subdomains as JSON (optional: filter by program)',
-                        'GET /api.php/subdomains?json=false&program_name=xxx' => 'Get subdomains as plain text list (optional: filter by program)',
-                        'GET /api.php/http?json=true&program_name=xxx' => 'Get HTTP data as JSON (optional: filter by program)',
-                        'GET /api.php/http?json=false&program_name=xxx' => 'Get HTTP subdomains as plain text list (optional: filter by program)',
-                        'GET /api.php/live-subdomains?json=true&program_name=xxx' => 'Get live subdomains as JSON (optional: filter by program)',
-                        'GET /api.php/live-subdomains?json=false&program_name=xxx' => 'Get live subdomains as plain text list (optional: filter by program)',
+                        'GET /api.php/programs' => 'Get all programs',
+                        'GET /api.php/programs/{name}' => 'Get program by name',
+                        'GET /api.php/all' => 'Get all programs and subdomains together',
+                        'GET /api.php/subdomains?program_name=xxx&domain=xxx' => 'Get subdomains (optional filters)',
+                        'GET /api.php/http?program_name=xxx&domain=xxx' => 'Get HTTP services (optional filters)',
+                        'GET /api.php/live-subdomains?program_name=xxx&domain=xxx' => 'Get live subdomains (optional filters)',
                     ],
                     'parameters' => [
-                        'json' => 'true for JSON format, false or omitted for plain text list',
-                        'program_name' => 'Filter results by program name (optional)'
+                        'json' => 'Response format: "true" (default) or "false" for plain text',
+                        'program_name' => 'Filter results by program name (optional)',
+                        'domain' => 'Filter results by domain (optional, uses LIKE search)'
                     ]
-                ], JSON_PRETTY_PRINT);
+                ]);
             } else {
-                header('Content-Type: text/html; charset=utf-8');
-                echo "<!DOCTYPE html><html><head><title>Watch Tower API</title>";
-                echo "<style>
-                    body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
-                    .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                    h1 { color: #1f2937; border-bottom: 3px solid #3b82f6; padding-bottom: 10px; }
-                    h2 { color: #374151; margin-top: 30px; }
-                    a { color: #3b82f6; text-decoration: none; }
-                    a:hover { text-decoration: underline; }
-                    ul { line-height: 1.8; }
-                    .swagger-link { display: inline-block; margin: 20px 0; padding: 12px 24px; background: #3b82f6; color: white; border-radius: 4px; font-weight: bold; }
-                    .swagger-link:hover { background: #2563eb; text-decoration: none; }
-                    code { background: #f3f4f6; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
-                </style>";
-                echo "</head><body><div class='container'>";
-                echo "<h1>🔍 Watch Tower API</h1>";
-                echo "<a href='/api-docs.html' class='swagger-link'>📚 View Interactive API Documentation (Swagger UI)</a>";
-                echo "<h2>Available Endpoints:</h2>";
-                echo "<ul>";
-                echo "<li><a href='/api.php/programs?json=true'><code>GET /api.php/programs?json=true</code></a> - Get all programs (JSON format)</li>";
-                echo "<li><a href='/api.php/programs?json=false'><code>GET /api.php/programs?json=false</code></a> - Get all programs (plain text list)</li>";
-                echo "<li><a href='/api.php/subdomains?json=true'><code>GET /api.php/subdomains?json=true</code></a> - Get all subdomains (JSON format)</li>";
-                echo "<li><a href='/api.php/subdomains?json=false'><code>GET /api.php/subdomains?json=false</code></a> - Get all subdomains (plain text list)</li>";
-                echo "<li><a href='/api.php/http?json=true'><code>GET /api.php/http?json=true</code></a> - Get all HTTP data (JSON format)</li>";
-                echo "<li><a href='/api.php/http?json=false'><code>GET /api.php/http?json=false</code></a> - Get HTTP subdomains (plain text list)</li>";
-                echo "<li><a href='/api.php/live-subdomains?json=true'><code>GET /api.php/live-subdomains?json=true</code></a> - Get all live subdomains (JSON format)</li>";
-                echo "<li><a href='/api.php/live-subdomains?json=false'><code>GET /api.php/live-subdomains?json=false</code></a> - Get live subdomains (plain text list)</li>";
-                echo "</ul>";
-                echo "<h2>Parameters:</h2>";
-                echo "<ul>";
-                echo "<li><strong><code>json</code></strong>: <code>true</code> for JSON format, <code>false</code> or omitted for plain text list</li>";
-                echo "<li><strong><code>program_name</code></strong>: Filter results by program name (optional)</li>";
-                echo "</ul>";
-                echo "<h2>Examples:</h2>";
-                echo "<ul>";
-                echo "<li><a href='/api.php/http?program_name=discourse&json=false'><code>/api.php/http?program_name=discourse&json=false</code></a> - Returns plain text list of subdomains</li>";
-                echo "<li><a href='/api.php/subdomains?program_name=discourse&json=false'><code>/api.php/subdomains?program_name=discourse&json=false</code></a> - Returns plain text list of subdomains</li>";
-                echo "</ul>";
-                echo "<h2>API Documentation:</h2>";
-                echo "<ul>";
-                echo "<li><a href='/api-docs.html'>Swagger UI Documentation</a> - Interactive API documentation</li>";
-                echo "<li><a href='/api.php/openapi'>OpenAPI Specification (YAML)</a> - Machine-readable API spec</li>";
-                echo "<li><a href='/swagger.yaml'>Swagger YAML File</a> - Direct link to specification file</li>";
-                echo "</ul>";
-                echo "</div></body></html>";
+                send_text("Watch Tower API v1.0.0\n\nAvailable endpoints:\n- GET /api.php/programs\n- GET /api.php/programs/{name}\n- GET /api.php/all\n- GET /api.php/subdomains\n- GET /api.php/http\n- GET /api.php/live-subdomains\n\nUse ?json=true (default) or ?json=false\nUse ?program_name=xxx to filter by program\nUse ?domain=xxx to filter by domain");
             }
             break;
     }
     
 } catch (Exception $e) {
     error_log("API Error: " . $e->getMessage());
-    http_response_code(500);
-    if ($json_format) {
-        header('Content-Type: application/json');
-        echo json_encode(['error' => 'Internal server error: ' . $e->getMessage()], JSON_PRETTY_PRINT);
-    } else {
-        header('Content-Type: text/plain');
-        echo "Error: " . $e->getMessage();
-    }
+    send_json(['error' => 'Internal server error: ' . $e->getMessage(), 'code' => 500], 500);
 }

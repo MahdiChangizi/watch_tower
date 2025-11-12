@@ -1,44 +1,46 @@
 #!/usr/bin/env php
 <?php
+
+require_once __DIR__ . '/../../bootstrap.php';
+require_once __DIR__ . '/../../db/db.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
 
-use App\Tools\Nuclei;
+use App\Nuclei\NucleiProgram;
+use App\Services\LiveSubdomain;
 
-// Check if domain list file is provided
 if ($argc < 2) {
-    echo "Usage: php src/Nuclei/program.php <domain.list>\n";
-    echo "Example: php src/Nuclei/program.php domain.list\n";
+    echo "Usage: php src/Nuclei/program.php <program_name>\n";
+    echo "Example: php src/Nuclei/program.php discourse\n";
     exit(1);
 }
 
-$domainFile = $argv[1];
-
-// Check if file exists
-if (!file_exists($domainFile)) {
-    echo "Error: File '$domainFile' not found.\n";
+$programName = trim($argv[1]);
+if ($programName === '') {
+    echo "Error: Program name cannot be empty.\n";
     exit(1);
 }
 
-// Check if file is readable
-if (!is_readable($domainFile)) {
-    echo "Error: File '$domainFile' is not readable.\n";
-    exit(1);
+global $db;
+$db = Database::connect();
+
+$liveService = new LiveSubdomain();
+$liveSubdomains = $liveService->getLivesByProgram($programName);
+
+if (empty($liveSubdomains)) {
+    echo "\033[33m[!] No live subdomains found for program: {$programName}\033[0m\n";
+    exit(0);
 }
 
-// Run Nuclei
-echo "\033[36m[+] Running Nuclei on domain list: $domainFile\033[0m\n";
-$nuclei = new Nuclei($domainFile);
-$results = $nuclei->run();
+$nucleiProgram = new NucleiProgram();
+$results = $nucleiProgram->run_nuclei_on_program($programName, $liveSubdomains);
 
-// Display results
 if (!empty($results)) {
     echo "\n\033[32m[+] Found " . count($results) . " result(s):\033[0m\n";
     foreach ($results as $result) {
-        echo "$result\n";
+        echo "{$result}\n";
     }
 } else {
-    echo "\033[33m[!] No results found.\033[0m\n";
+    echo "\033[33m[!] No results found by nuclei.\033[0m\n";
 }
 
-echo "\n\033[36m[+] Nuclei scan completed.\033[0m\n";
-
+echo "\n\033[36m[+] Nuclei scan completed for program '{$programName}'.\033[0m\n";

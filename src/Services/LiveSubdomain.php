@@ -20,19 +20,13 @@ class LiveSubdomain {
         $this->helper = new Helpers();
     }
 
-    public function upsert_lives(string $domain, string $subdomain, string $scope, array $ips, array $cdn): bool
+    public function upsert_lives(string $program_name, string $subdomain, array $ips, array $cdn): bool
     {
         try {
-            // Find the program related to the domain using jsonb containment
-            $stmtProgram = $this->db->prepare("
-                SELECT program_name
-                FROM programs
-                WHERE scopes @> :scope_json::jsonb
-                LIMIT 1
-            ");
-            $stmtProgram->execute([':scope_json' => json_encode([$domain])]);
-            $programRow = $stmtProgram->fetch(PDO::FETCH_ASSOC);
-            $programName = $programRow['program_name'] ?? $domain;
+            // Extract domain from subdomain for scope (e.g., "sub.example.com" -> "example.com")
+            $parts = explode('.', $subdomain);
+            $domain = count($parts) >= 2 ? implode('.', array_slice($parts, -2)) : $subdomain;
+            $scope = $domain;
 
             // Check for existing record
             $stmt = $this->db->prepare("SELECT * FROM live_subdomains WHERE subdomain = :subdomain LIMIT 1");
@@ -69,8 +63,8 @@ class LiveSubdomain {
                         WHERE subdomain = :subdomain
                     ");
                     $stmtUpdate->execute([
-                        ':program_name' => $programName,
-                        ':scope' => $domain,
+                        ':program_name' => $program_name,
+                        ':scope' => $scope,
                         ':ips' => json_encode($ips_sorted),
                         ':cdn' => json_encode($cdn_sorted),
                         ':last_update' => $now,
@@ -99,16 +93,16 @@ class LiveSubdomain {
                     (:program_name, :subdomain, :scope, :ips::jsonb, :cdn::jsonb, :created_date, :last_update)
                 ");
                 $stmtInsert->execute([
-                    ':program_name' => $programName,
+                    ':program_name' => $program_name,
                     ':subdomain' => $subdomain,
-                    ':scope' => $domain,
+                    ':scope' => $scope,
                     ':ips' => json_encode($ips_sorted),
                     ':cdn' => json_encode($cdn_sorted),
                     ':created_date' => $now,
                     ':last_update' => $now
                 ]);
 
-                $this->message->send("```'$subdomain' (fresh live) has been added to '$programName' program```");
+                $this->message->send("```'$subdomain' (fresh live) has been added to '$program_name' program```");
             }
 
             return true;
@@ -126,6 +120,13 @@ class LiveSubdomain {
         # just fetch subdomain from live_subdomains
         $stmt = $this->db->prepare("SELECT * FROM live_subdomains ORDER BY last_update DESC");
         $stmt->execute();
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    public function getLivesByProgram(string $program_name): array
+    {
+        $stmt = $this->db->prepare("SELECT * FROM live_subdomains WHERE program_name = :program_name ORDER BY last_update DESC");
+        $stmt->execute([':program_name' => $program_name]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 }

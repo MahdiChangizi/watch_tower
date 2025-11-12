@@ -20,6 +20,14 @@ class Subdomain {
 
     // program_name, subdomain_name, provider
     public function upsert_subdomain(string $program_name, string $subdomain_name, string $provider) {
+        $program_name = trim($program_name);
+        $subdomain_name = strtolower(trim($subdomain_name));
+        $provider = trim($provider);
+
+        if ($program_name === '' || $subdomain_name === '') {
+            return;
+        }
+
         // check if record exists
         $stmt = $this->db->prepare("SELECT * FROM subdomains WHERE subdomain = :subdomain LIMIT 1");
         $stmt->execute([':subdomain' => $subdomain_name]);
@@ -28,6 +36,17 @@ class Subdomain {
         // if not is_in_scope
         // TODO: implement is_in_scope check
         if ($existing) {
+            if (!empty($provider) && ($existing['provider'] ?? '') !== $provider) {
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE subdomains
+                    SET provider = :provider
+                    WHERE id = :id
+                ");
+                $stmtUpdate->execute([
+                    ':provider' => $provider,
+                    ':id' => $existing['id'],
+                ]);
+            }
             // record exists, no action needed
             return;
         } else {

@@ -1,58 +1,31 @@
 openapi: 3.0.3
 info:
   title: Watch Tower API
-  description: |
-    RESTful API for accessing Watch Tower database including programs, subdomains, HTTP services, and live subdomains.
-    
-    The API supports two response formats:
-    - **JSON format** (`json=true`): Returns structured JSON data with all fields
-    - **Plain text format** (`json=false` or omitted): Returns a simple list of domains/subdomains, one per line
-    
-    All endpoints support optional filtering by `program_name` parameter.
+  description: REST API for reading data from Watch Tower database. All endpoints are read-only.
   version: 1.0.0
   contact:
     name: Watch Tower API Support
-  license:
-    name: MIT
 
 servers:
-  - url: http://localhost:8000
-    description: Local development server
-  - url: http://localhost
-    description: Default local server
   - url: /api.php
-    description: Relative URL
-
-tags:
-  - name: Programs
-    description: Operations related to programs
-  - name: Subdomains
-    description: Operations related to subdomains
-  - name: HTTP
-    description: Operations related to HTTP services
-  - name: Live Subdomains
-    description: Operations related to live subdomains
+    description: API Server
 
 paths:
   /programs:
     get:
+      summary: Get all programs
+      description: Retrieve a list of all programs from the database
+      operationId: getPrograms
       tags:
         - Programs
-      summary: Get all programs
-      description: |
-        Retrieve all programs from the database.
-        - Use `json=true` to get JSON response with full program data
-        - Use `json=false` or omit the parameter to get plain text list of program names
       parameters:
         - name: json
           in: query
-          description: Response format. `true` for JSON, `false` or omitted for plain text
+          description: Response format (true for JSON, false for plain text)
           required: false
           schema:
-            type: string
-            enum: [true, false]
+            type: boolean
             default: true
-          example: true
       responses:
         '200':
           description: Successful response
@@ -65,55 +38,73 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Program'
-              examples:
-                json_response:
-                  value:
-                    programs:
-                      - id: 1
-                        program_name: discourse
-                        created_date: "2024-01-01T00:00:00Z"
-                        config:
-                          key: value
-                        scopes:
-                          - "*.discourse.org"
-                        ooscopes:
-                          - "test.com"
             text/plain:
               schema:
                 type: string
-              example: |
-                discourse
-                testprogram
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                example: "program1\nprogram2\nprogram3"
+
+  /programs/{programName}:
+    get:
+      summary: Get program by name
+      description: Retrieve a specific program by its name
+      operationId: getProgramByName
+      tags:
+        - Programs
+      parameters:
+        - name: programName
+          in: path
+          required: true
+          description: The name of the program
+          schema:
+            type: string
+        - name: json
+          in: query
+          description: Response format (true for JSON, false for plain text)
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Program found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Program'
+        '404':
+          description: Program not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /subdomains:
     get:
+      summary: Get all subdomains
+      description: Retrieve all subdomains from the database, optionally filtered by program name
+      operationId: getSubdomains
       tags:
         - Subdomains
-      summary: Get subdomains
-      description: |
-        Retrieve subdomains from the database.
-        - Use `json=true` to get JSON response with full subdomain data
-        - Use `json=false` or omit the parameter to get plain text list of subdomains
-        - Optionally filter by `program_name`
       parameters:
-        - name: json
-          in: query
-          description: Response format. `true` for JSON, `false` or omitted for plain text
-          required: false
-          schema:
-            type: string
-            enum: [true, false]
-            default: true
-          example: true
         - name: program_name
           in: query
           description: Filter subdomains by program name
           required: false
           schema:
             type: string
-          example: discourse
+        - name: domain
+          in: query
+          description: Filter subdomains by domain (uses LIKE search)
+          required: false
+          schema:
+            type: string
+        - name: json
+          in: query
+          description: Response format (true for JSON, false for plain text)
+          required: false
+          schema:
+            type: boolean
+            default: true
       responses:
         '200':
           description: Successful response
@@ -126,54 +117,38 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Subdomain'
-              examples:
-                json_response:
-                  value:
-                    subdomains:
-                      - id: 1
-                        program_name: discourse
-                        subdomain: "discourse.org"
-                        scope: discourse
-                        provider: subfinder
-                        created_date: "2024-01-01T00:00:00Z"
-                        last_update: "2024-01-01T00:00:00Z"
             text/plain:
               schema:
                 type: string
-              example: |
-                discourse.org
-                test.discourse.org
-                api.discourse.org
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                example: "subdomain1.example.com\nsubdomain2.example.com"
 
   /http:
     get:
-      tags:
-        - HTTP
       summary: Get HTTP services
-      description: |
-        Retrieve HTTP service information from the database.
-        - Use `json=true` to get JSON response with full HTTP data
-        - Use `json=false` or omit the parameter to get plain text list of subdomains
-        - Optionally filter by `program_name`
+      description: Retrieve HTTP service information from the database, optionally filtered by program name
+      operationId: getHttpServices
+      tags:
+        - HTTP Services
       parameters:
-        - name: json
-          in: query
-          description: Response format. `true` for JSON, `false` or omitted for plain text
-          required: false
-          schema:
-            type: string
-            enum: [true, false]
-            default: true
-          example: true
         - name: program_name
           in: query
           description: Filter HTTP services by program name
           required: false
           schema:
             type: string
-          example: discourse
+        - name: domain
+          in: query
+          description: Filter HTTP services by domain (uses LIKE search)
+          required: false
+          schema:
+            type: string
+        - name: json
+          in: query
+          description: Response format (true for JSON, false for plain text)
+          required: false
+          schema:
+            type: boolean
+            default: true
       responses:
         '200':
           description: Successful response
@@ -186,60 +161,38 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/HttpService'
-              examples:
-                json_response:
-                  value:
-                    http:
-                      - id: 1
-                        program_name: discourse
-                        subdomain: "discourse.org"
-                        scope: discourse
-                        ips: ["1.2.3.4", "5.6.7.8"]
-                        tech: ["nginx", "php"]
-                        title: "Discourse"
-                        status_code: "200"
-                        headers: {"server": "nginx"}
-                        url: "https://discourse.org"
-                        final_url: "https://discourse.org"
-                        favicon: "abc123"
-                        created_date: "2024-01-01T00:00:00Z"
-                        last_update: "2024-01-01T00:00:00Z"
             text/plain:
               schema:
                 type: string
-              example: |
-                discourse.org
-                test.discourse.org
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                example: "subdomain1.example.com\nsubdomain2.example.com"
 
   /live-subdomains:
     get:
+      summary: Get live subdomains
+      description: Retrieve live subdomains from the database, optionally filtered by program name
+      operationId: getLiveSubdomains
       tags:
         - Live Subdomains
-      summary: Get live subdomains
-      description: |
-        Retrieve live subdomains from the database.
-        - Use `json=true` to get JSON response with full live subdomain data
-        - Use `json=false` or omit the parameter to get plain text list of subdomains
-        - Optionally filter by `program_name`
       parameters:
-        - name: json
-          in: query
-          description: Response format. `true` for JSON, `false` or omitted for plain text
-          required: false
-          schema:
-            type: string
-            enum: [true, false]
-            default: true
-          example: true
         - name: program_name
           in: query
           description: Filter live subdomains by program name
           required: false
           schema:
             type: string
-          example: discourse
+        - name: domain
+          in: query
+          description: Filter live subdomains by domain (uses LIKE search)
+          required: false
+          schema:
+            type: string
+        - name: json
+          in: query
+          description: Response format (true for JSON, false for plain text)
+          required: false
+          schema:
+            type: boolean
+            default: true
       responses:
         '200':
           description: Successful response
@@ -252,46 +205,26 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/LiveSubdomain'
-              examples:
-                json_response:
-                  value:
-                    live_subdomains:
-                      - id: 1
-                        program_name: discourse
-                        subdomain: "discourse.org"
-                        scope: discourse
-                        ips: ["1.2.3.4"]
-                        cdn: ["cloudflare"]
-                        created_date: "2024-01-01T00:00:00Z"
-                        last_update: "2024-01-01T00:00:00Z"
             text/plain:
               schema:
                 type: string
-              example: |
-                discourse.org
-                test.discourse.org
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                example: "subdomain1.example.com\nsubdomain2.example.com"
 
-  /lives:
+  /all:
     get:
+      summary: Get all programs and subdomains
+      description: Retrieve all programs and subdomains together in a single response
+      operationId: getAll
       tags:
-        - Live Subdomains
-      summary: Get live subdomains (alias)
-      description: Alias for `/live-subdomains` endpoint
+        - Combined
       parameters:
         - name: json
           in: query
+          description: Response format (true for JSON, false for plain text)
           required: false
           schema:
-            type: string
-            enum: [true, false]
+            type: boolean
             default: true
-        - name: program_name
-          in: query
-          required: false
-          schema:
-            type: string
       responses:
         '200':
           description: Successful response
@@ -300,15 +233,18 @@ paths:
               schema:
                 type: object
                 properties:
-                  live_subdomains:
+                  programs:
                     type: array
                     items:
-                      $ref: '#/components/schemas/LiveSubdomain'
+                      $ref: '#/components/schemas/Program'
+                  subdomains:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subdomain'
             text/plain:
               schema:
                 type: string
-        '500':
-          $ref: '#/components/responses/InternalServerError'
+                example: "=== PROGRAMS ===\nprogram1\nprogram2\n\n=== SUBDOMAINS ===\nsubdomain1.example.com\nsubdomain2.example.com"
 
 components:
   schemas:
@@ -318,37 +254,27 @@ components:
         id:
           type: integer
           description: Program ID
-          example: 1
         program_name:
           type: string
-          description: Program name
-          example: discourse
+          description: Name of the program
         created_date:
           type: string
           format: date-time
           description: Creation timestamp
-          example: "2024-01-01T00:00:00Z"
         config:
           type: object
           description: Program configuration (JSONB)
           additionalProperties: true
-          example:
-            key: value
         scopes:
           type: array
           description: Program scopes
           items:
             type: string
-          example:
-            - "*.discourse.org"
-            - "discourse.org"
         ooscopes:
           type: array
-          description: Out of scope domains
+          description: Out of scope items
           items:
             type: string
-          example:
-            - "test.com"
 
     Subdomain:
       type: object
@@ -356,33 +282,26 @@ components:
         id:
           type: integer
           description: Subdomain ID
-          example: 1
         program_name:
           type: string
-          description: Program name
-          example: discourse
+          description: Associated program name
         subdomain:
           type: string
           description: Subdomain name
-          example: discourse.org
         scope:
           type: string
-          description: Scope
-          example: discourse
+          description: Scope information
         provider:
           type: string
-          description: Discovery provider
-          example: subfinder
+          description: Provider information
         created_date:
           type: string
           format: date-time
           description: Creation timestamp
-          example: "2024-01-01T00:00:00Z"
         last_update:
           type: string
           format: date-time
           description: Last update timestamp
-          example: "2024-01-01T00:00:00Z"
 
     HttpService:
       type: object
@@ -390,72 +309,52 @@ components:
         id:
           type: integer
           description: HTTP service ID
-          example: 1
         program_name:
           type: string
-          description: Program name
-          example: discourse
+          description: Associated program name
         subdomain:
           type: string
           description: Subdomain name
-          example: discourse.org
         scope:
           type: string
-          description: Scope
-          example: discourse
+          description: Scope information
         ips:
           type: array
-          description: IP addresses (JSONB)
+          description: IP addresses
           items:
             type: string
-          example:
-            - "1.2.3.4"
-            - "5.6.7.8"
         tech:
           type: array
-          description: Technologies detected (JSONB)
+          description: Technologies detected
           items:
             type: string
-          example:
-            - "nginx"
-            - "php"
         title:
           type: string
           description: Page title
-          example: Discourse
         status_code:
           type: string
           description: HTTP status code
-          example: "200"
         headers:
           type: object
           description: HTTP headers (JSONB)
           additionalProperties: true
-          example:
-            server: nginx
-            content-type: text/html
         url:
           type: string
           description: URL
-          example: https://discourse.org
         final_url:
           type: string
           description: Final redirect URL
-          example: https://discourse.org
         favicon:
           type: string
-          description: Favicon hash
-          example: abc123
+          description: Favicon URL
         created_date:
           type: string
           format: date-time
           description: Creation timestamp
-          example: "2024-01-01T00:00:00Z"
         last_update:
           type: string
           format: date-time
           description: Last update timestamp
-          example: "2024-01-01T00:00:00Z"
 
     LiveSubdomain:
       type: object
@@ -463,43 +362,32 @@ components:
         id:
           type: integer
           description: Live subdomain ID
-          example: 1
         program_name:
           type: string
-          description: Program name
-          example: discourse
+          description: Associated program name
         subdomain:
           type: string
           description: Subdomain name
-          example: discourse.org
         scope:
           type: string
-          description: Scope
-          example: discourse
+          description: Scope information
         ips:
           type: array
-          description: IP addresses (JSONB)
+          description: IP addresses
           items:
             type: string
-          example:
-            - "1.2.3.4"
         cdn:
-          type: array
-          description: CDN providers (JSONB)
-          items:
-            type: string
-          example:
-            - "cloudflare"
+          type: object
+          description: CDN information (JSONB)
+          additionalProperties: true
         created_date:
           type: string
           format: date-time
           description: Creation timestamp
-          example: "2024-01-01T00:00:00Z"
         last_update:
           type: string
           format: date-time
           description: Last update timestamp
-          example: "2024-01-01T00:00:00Z"
 
     Error:
       type: object
@@ -507,18 +395,7 @@ components:
         error:
           type: string
           description: Error message
-      example:
-        error: "Internal server error"
-
-  responses:
-    InternalServerError:
-      description: Internal server error
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-        text/plain:
-          schema:
-            type: string
-          example: "Error: Internal server error"
+        code:
+          type: integer
+          description: HTTP status code
 

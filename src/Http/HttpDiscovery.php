@@ -81,8 +81,8 @@ class HttpDiscovery {
                 $ips_array = $normalizeIps($item['ips'] ?? null);
 
                 $this->http->upsert_http(
+                    $item['program_name'] ?? '',
                     $item['subdomain'],
-                    $item['scope'] ?? '',
                     $ips_array,
                     $response['tech'] ?? [],
                     $response['title'] ?? '',

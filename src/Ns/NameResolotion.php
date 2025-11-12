@@ -67,9 +67,8 @@ class NameResolotion {
 
                 // upsert resolved domain into database
                 $liveSubdomainService->upsert_lives(
-                    $host,
-                    $host, // or extract domain if needed
                     $program['program_name'],
+                    $host,
                     $ips,
                     $cnames
                 );

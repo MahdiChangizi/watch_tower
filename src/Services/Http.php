@@ -19,8 +19,8 @@ class Http {
     }
 
     public function upsert_http(
+        string $program_name,
         string $subdomain,
-        string $scope,
         array $ips,
         array $tech,
         string $title,
@@ -32,12 +32,9 @@ class Http {
     ): bool {
         $now = Helpers::current_time();
 
-        // get program name related to scope
-        $scopeJson = json_encode([$scope]); // e.g. '["example.com"]'
-        $stmt = $this->db->prepare("SELECT program_name FROM programs WHERE scopes @> :scope_json::jsonb LIMIT 1");
-        $stmt->execute([':scope_json' => $scopeJson]);
-        $programRow = $stmt->fetch(\PDO::FETCH_ASSOC);
-        $programName = $programRow['program_name'] ?? $scope;
+        // Extract domain from subdomain for scope (e.g., "sub.example.com" -> "example.com")
+        $parts = explode('.', $subdomain);
+        $scope = count($parts) >= 2 ? implode('.', array_slice($parts, -2)) : $subdomain;
 
 
         // prepare json fields
@@ -83,7 +80,7 @@ class Http {
                 WHERE subdomain = :subdomain";
             $stmt = $this->db->prepare($sqlUpdate);
             $stmt->execute([
-                ':program_name' => $programName,
+                ':program_name' => $program_name,
                 ':scope' => $scope,
                 ':ips' => $ips_json,
                 ':tech' => $tech_json,
@@ -108,7 +105,7 @@ class Http {
             )";
             $stmt = $this->db->prepare($sqlInsert);
             $stmt->execute([
-                ':program_name' => $programName,
+                ':program_name' => $program_name,
                 ':subdomain' => $subdomain,
                 ':scope' => $scope,
                 ':ips' => $ips_json,
@@ -123,8 +120,8 @@ class Http {
                 ':last_update' => $now,
             ]);
 
-            $this->message->send("```'{$subdomain}' (fresh http) has been added to '{$programName}' program```");
-            error_log("[".$this->helper::current_time()."] Inserted new http service: {$subdomain}");
+            $this->message->send("```'{$subdomain}' (fresh http) has been added to '{$program_name}' program```");
+            error_log("[+] [".$this->helper::current_time()."] Inserted new http service: " . "\033[0;32m" . "{$subdomain}" . "\033[0m");
             return true;
         }
     }
