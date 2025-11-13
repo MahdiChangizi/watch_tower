@@ -40,7 +40,6 @@ nurld
 nurlen
 offercode
 original
-page
 path
 pkgrepourl
 popupurl
@@ -54,7 +53,6 @@ redirectWithToken
 redirect_uri
 redirection
 redirurl
-ref
 refURL
 referer
 referrer
