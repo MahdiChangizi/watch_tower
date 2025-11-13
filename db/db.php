@@ -35,7 +35,7 @@ final class Database
     public static function createTables(): void
     {
         $db = self::connect();
-        foreach (['program', 'subdomain', 'live_subdomain', 'http', 'port'] as $table) {
+        foreach (['program', 'subdomain', 'live_subdomain', 'http', 'port', 'url'] as $table) {
             $path = __DIR__ . '/tables/' . $table . '.sql';
             if (!is_file($path)) {
                 throw new \RuntimeException(sprintf('Missing schema file: %s', $path));

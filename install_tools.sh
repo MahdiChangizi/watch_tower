@@ -33,6 +33,7 @@ go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 go install -v github.com/projectdiscovery/chaos-client/cmd/chaos@latest
 go install github.com/samogod/samoscout@latest
+go install github.com/tomnomnom/waybackurls@latest
 
 # naabu
 sudo apt install libpcap-dev -y
@@ -54,6 +55,7 @@ END
 
 # alias for nuclei
 echo "alias watch_nuclei='php /var/www/watch_tower/src/Nuclei/program.php'" >> ~/.zshrc
+echo "alias watch_url_scan='php /var/www/watch_tower/src/Urls/UrlScanner.php'" >> ~/.zshrc
 
 echo 'export PDCP_API_KEY="75880f7a-04b5-4c87-9a70-a979cc8d5d2b"' >> ~/.zshrc
 source ~/.zshrc
