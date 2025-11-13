@@ -55,7 +55,7 @@ END
 
 # alias for nuclei
 echo "alias watch_nuclei='php /var/www/watch_tower/src/Nuclei/program.php'" >> ~/.zshrc
-echo "alias watch_url_scan='php /var/www/watch_tower/src/Urls/UrlScanner.php'" >> ~/.zshrc
+echo "alias watch_url_scan='php /var/www/watch_tower/UrlScanner.php'" >> ~/.zshrc
 
 echo 'export PDCP_API_KEY="75880f7a-04b5-4c87-9a70-a979cc8d5d2b"' >> ~/.zshrc
 source ~/.zshrc
