@@ -46,6 +46,7 @@ $json_param = $_GET['json'] ?? null;
 $is_json = ($json_param === null || strtolower($json_param) === 'true');
 $program_name = $_GET['program_name'] ?? null;
 $domain = $_GET['domain'] ?? null;
+$source = $_GET['source'] ?? null;
 
 // Get resource from path (handle /api/programs/name format)
 $path_parts = array_filter(explode('/', $path), function($part) {
@@ -58,7 +59,7 @@ $resource_id = $path_parts[1] ?? null;
 
 // Helper function to parse JSONB fields
 function parse_jsonb_fields($records) {
-    $jsonb_fields = ['scopes', 'ooscopes', 'config', 'ips', 'tech', 'headers', 'cdn', 'metadata'];
+    $jsonb_fields = ['scopes', 'ooscopes', 'config', 'ips', 'tech', 'headers', 'cdn', 'metadata', 'parameters'];
     
     foreach ($records as &$record) {
         foreach ($jsonb_fields as $field) {
@@ -188,6 +189,46 @@ try {
             } else {
                 $domains = extract_domains($data, 'subdomain');
                 send_text(implode("\n", $domains));
+            }
+            break;
+
+        case 'urls':
+            if (!$program_name) {
+                send_json(['error' => 'program_name parameter is required'], 400);
+                break;
+            }
+
+            $conditions = ["program_name = :program_name"];
+            $params = [':program_name' => $program_name];
+
+            if ($domain) {
+                $conditions[] = "url LIKE :url_like";
+                $params[':url_like'] = '%' . $domain . '%';
+            }
+
+            if ($source) {
+                $conditions[] = "source = :source";
+                $params[':source'] = $source;
+            }
+
+            $where_clause = !empty($conditions) ? 'WHERE ' . implode(' AND ', $conditions) : '';
+            $stmt = $db->prepare("SELECT * FROM urls $where_clause ORDER BY last_seen DESC");
+            $stmt->execute($params);
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $data = parse_jsonb_fields($data);
+
+            if ($is_json) {
+                send_json([
+                    'program_name' => $program_name,
+                    'count' => count($data),
+                    'urls' => $data,
+                ]);
+            } else {
+                $urls = array_map(function ($row) {
+                    return $row['url'] ?? null;
+                }, $data);
+                $urls = array_filter($urls);
+                send_text(implode("\n", $urls));
             }
             break;
         
@@ -410,6 +451,7 @@ try {
                         'GET /api.php/all' => 'Get all programs and subdomains together',
                         'GET /api.php/subdomains?program_name=xxx&domain=xxx' => 'Get subdomains (optional filters)',
                         'GET /api.php/http?program_name=xxx&domain=xxx' => 'Get HTTP services (optional filters)',
+                        'GET /api.php/urls?program_name=xxx&domain=xxx&source=xxx' => 'Get archived URLs (program_name required)',
                         'GET /api.php/live-subdomains?program_name=xxx&domain=xxx' => 'Get live subdomains (optional filters)',
                         'GET /api.php/ports?program_name=xxx&domain=xxx' => 'Get discovered open ports (optional filters)',
                     ],
