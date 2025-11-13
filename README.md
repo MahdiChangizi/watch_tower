@@ -1,11 +1,3 @@
- ██████╗██╗  ██╗ █████╗ ███╗   ██╗ ██████╗ ██╗███████╗
- ██╔════╝██║  ██║██╔══██╗████╗  ██║██╔════╝ ██║╚══███╔╝
- ██║     ███████║███████║██╔██╗ ██║██║  ███╗██║  ███╔╝ 
- ██║     ██╔══██║██╔══██║██║╚██╗██║██║   ██║██║ ███╔╝  
- ╚██████╗██║  ██║██║  ██║██║ ╚████║╚██████╔╝██║███████╗
-  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚══════╝
-
-
 ## About Watch Tower
 Watch Tower is a tool that scans the web for programs, subdomains, live hosts and HTTP fingerprints in a Postgres database.
 If a program add a new subdomain it will send message to discord.
