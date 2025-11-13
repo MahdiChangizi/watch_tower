@@ -166,6 +166,68 @@ paths:
                 type: string
                 example: "subdomain1.example.com\nsubdomain2.example.com"
 
+  /urls:
+    get:
+      summary: Get archived URLs
+      description: Retrieve archived URLs for a specific program, optionally filtered by URL substring or source
+      operationId: getUrls
+      tags:
+        - URLs
+      parameters:
+        - name: program_name
+          in: query
+          description: Program name to retrieve URLs for
+          required: true
+          schema:
+            type: string
+        - name: domain
+          in: query
+          description: Filter URLs containing this substring
+          required: false
+          schema:
+            type: string
+        - name: source
+          in: query
+          description: Filter URLs collected from a specific source
+          required: false
+          schema:
+            type: string
+        - name: json
+          in: query
+          description: Response format (true for JSON, false for plain text)
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  program_name:
+                    type: string
+                    description: Program name the URLs belong to
+                  count:
+                    type: integer
+                    description: Total number of URLs in the response
+                  urls:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UrlEntry'
+            text/plain:
+              schema:
+                type: string
+                example: "https://example.com/page1\nhttps://example.com/page2"
+        '400':
+          description: Missing required program_name parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /live-subdomains:
     get:
       summary: Get live subdomains
@@ -490,4 +552,39 @@ components:
         code:
           type: integer
           description: HTTP status code
+
+    UrlEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: URL record ID
+        program_name:
+          type: string
+          description: Program associated with the URL
+        scope:
+          type: string
+          description: Scope associated with the URL
+        url:
+          type: string
+          description: URL string
+        parameters:
+          type: array
+          description: Parameters discovered for the URL
+          items:
+            type: string
+        source:
+          type: string
+          description: Source tool that discovered the URL
+        occurrences:
+          type: integer
+          description: Number of times the URL has been seen
+        first_seen:
+          type: string
+          format: date-time
+          description: Timestamp when the URL was first seen
+        last_seen:
+          type: string
+          format: date-time
+          description: Timestamp when the URL was last seen
 
