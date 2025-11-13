@@ -73,13 +73,13 @@ final class Subdomain
             ]);
 
             if ($this->messenger) {
-                $this->messenger->send(
-                    sprintf(
-                        "```%s (new subdomain) added to %s```",
-                        $subdomain_name,
-                        $program_name
-                    )
-                );
+                // $this->messenger->send(
+                //     sprintf(
+                //         "```%s (new subdomain) added to %s```",
+                //         $subdomain_name,
+                //         $program_name
+                //     )
+                // );
             }
 
             error_log(sprintf(

@@ -17,11 +17,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// Only allow GET requests (read-only API)
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+$method = $_SERVER['REQUEST_METHOD'];
+
+// Allow only GET and DELETE
+if (!in_array($method, ['GET', 'DELETE'], true)) {
     http_response_code(405);
     header('Content-Type: application/json');
-    echo json_encode(['error' => 'Method not allowed. Only GET requests are supported.']);
+    echo json_encode(['error' => 'Method not allowed. Only GET and DELETE requests are supported.']);
     exit;
 }
 
@@ -103,7 +105,58 @@ function send_text($data, $status_code = 200) {
 try {
     switch ($resource) {
         case 'programs':
-            if ($resource_id) {
+            if ($method === 'DELETE') {
+                if (!$resource_id) {
+                    send_json(['error' => 'Program name is required in path for deletion', 'code' => 400], 400);
+                    break;
+                }
+
+                $program_to_delete = $resource_id;
+                $db->beginTransaction();
+
+                try {
+                    $deleteSummary = [];
+
+                    $tables = [
+                        'live_subdomains' => 'DELETE FROM live_subdomains WHERE program_name = :program_name',
+                        'subdomains' => 'DELETE FROM subdomains WHERE program_name = :program_name',
+                        'http' => 'DELETE FROM http WHERE program_name = :program_name',
+                        'urls' => 'DELETE FROM urls WHERE program_name = :program_name',
+                        'ports' => 'DELETE FROM ports WHERE program_name = :program_name',
+                    ];
+
+                    foreach ($tables as $label => $sql) {
+                        $stmt = $db->prepare($sql);
+                        $stmt->execute([':program_name' => $program_to_delete]);
+                        $deleteSummary[$label] = $stmt->rowCount();
+                    }
+
+                    $programStmt = $db->prepare("DELETE FROM programs WHERE program_name = :program_name");
+                    $programStmt->execute([':program_name' => $program_to_delete]);
+                    $programDeleted = $programStmt->rowCount();
+
+                    if ($programDeleted === 0) {
+                        $db->rollBack();
+                        send_json(['error' => 'Program not found', 'code' => 404], 404);
+                        break;
+                    }
+
+                    $db->commit();
+
+                    send_json([
+                        'message' => 'Program and related data deleted successfully',
+                        'program_name' => $program_to_delete,
+                        'deleted' => array_merge(['programs' => $programDeleted], $deleteSummary),
+                    ]);
+                } catch (Exception $exception) {
+                    if ($db->inTransaction()) {
+                        $db->rollBack();
+                    }
+
+                    error_log('API program deletion error: ' . $exception->getMessage());
+                    send_json(['error' => 'Failed to delete program', 'code' => 500], 500);
+                }
+            } elseif ($resource_id) {
                 // Get specific program by name
                 $stmt = $db->prepare("SELECT * FROM programs WHERE program_name = :program_name LIMIT 1");
                 $stmt->execute([':program_name' => $resource_id]);
@@ -452,6 +505,7 @@ try {
                         'GET /api.php/subdomains?program_name=xxx&domain=xxx' => 'Get subdomains (optional filters)',
                         'GET /api.php/http?program_name=xxx&domain=xxx' => 'Get HTTP services (optional filters)',
                         'GET /api.php/urls?program_name=xxx&domain=xxx&source=xxx' => 'Get archived URLs (program_name required)',
+                        'DELETE /api.php/programs/{name}' => 'Delete program and related data',
                         'GET /api.php/live-subdomains?program_name=xxx&domain=xxx' => 'Get live subdomains (optional filters)',
                         'GET /api.php/ports?program_name=xxx&domain=xxx' => 'Get discovered open ports (optional filters)',
                     ],

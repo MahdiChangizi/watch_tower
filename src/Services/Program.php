@@ -36,6 +36,7 @@ final class Program
             );
             $stmt->execute([':program_name' => $program_name]);
             $exists = (bool) $stmt->fetchColumn();
+            $isNewProgram = !$exists;
 
             if ($exists) {
                 $stmt = $this->db->prepare(
@@ -58,12 +59,30 @@ final class Program
                 ':ooscopes' => $ooscopes_json,
                 ':config' => $config_json,
             ]);
+
+            // If this is a new program, create the mute flag to suppress Discord notifications
+            // for the first enumeration run
+            if ($isNewProgram) {
+                $this->createMuteFlag();
+            }
         } catch (PDOException $exception) {
             error_log('Program::upsert_program error: ' . $exception->getMessage());
             throw $exception;
         }
 
         return true;
+    }
+
+    private function createMuteFlag(): void
+    {
+        $configDir = dirname(__DIR__, 2) . '/config';
+        if (!is_dir($configDir)) {
+            @mkdir($configDir, 0755, true);
+        }
+
+        $flagFile = $configDir . '/discord_mute_once.flag';
+        @file_put_contents($flagFile, date('Y-m-d H:i:s') . "\n");
+        error_log("Created Discord mute flag for new program: {$flagFile}");
     }
 
     public function get_all_programs(): array

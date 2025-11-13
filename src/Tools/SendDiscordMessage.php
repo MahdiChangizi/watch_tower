@@ -10,6 +10,7 @@ final class SendDiscordMessage
     private const USER_AGENT = 'watch_tower/1.0';
 
     private ?string $webhook;
+    private const MUTE_ONCE_FLAG = 'config/discord_mute_once.flag';
 
     public function __construct(?string $webhook = null)
     {
@@ -24,7 +25,16 @@ final class SendDiscordMessage
 
     public static function createOrNull(): ?self
     {
-        $webhook = $_ENV['WEBHOOK_URL'];
+        if (self::notificationsDisabled() || self::consumeMuteOnceFlag()) {
+            error_log('SendDiscordMessage: Discord notifications muted.');
+            return null;
+        }
+
+        $webhook = getenv('WEBHOOK_URL');
+        if ($webhook === false || $webhook === '') {
+            $webhook = $_ENV['WEBHOOK_URL'] ?? null;
+        }
+
         if (!$webhook) {
             error_log('SendDiscordMessage: WEBHOOK_URL not configured; notifications disabled.');
             return null;
@@ -80,5 +90,54 @@ final class SendDiscordMessage
         }
 
         return true;
+    }
+
+    private static function notificationsDisabled(): bool
+    {
+        $envValue = getenv('DISCORD_NOTIFICATIONS_ENABLED');
+        if (self::isExplicitlyFalse($envValue)) {
+            return true;
+        }
+
+        $envValue = $_ENV['DISCORD_NOTIFICATIONS_ENABLED'] ?? null;
+        if (self::isExplicitlyFalse($envValue)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static function isExplicitlyFalse($value): bool
+    {
+        if ($value === false || $value === null) {
+            return false;
+        }
+
+        $normalized = strtolower((string) $value);
+
+        return in_array($normalized, ['0', 'false', 'off', 'no'], true);
+    }
+
+    private static function consumeMuteOnceFlag(): bool
+    {
+        static $cachedResult = null;
+
+        if ($cachedResult !== null) {
+            return $cachedResult;
+        }
+
+        $file = dirname(__DIR__, 2) . '/' . self::MUTE_ONCE_FLAG;
+
+        if (!is_file($file)) {
+            $cachedResult = false;
+            return $cachedResult;
+        }
+
+        @unlink($file);
+        error_log("SendDiscordMessage: Consumed mute-once flag, notifications will be suppressed for this run.");
+
+        $cachedResult = true;
+
+        return $cachedResult;
     }
 }

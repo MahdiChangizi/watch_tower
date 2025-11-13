@@ -77,6 +77,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete program and related data
+      description: Delete a program and all related records (subdomains, live subdomains, HTTP services, URLs, ports)
+      operationId: deleteProgram
+      tags:
+        - Programs
+      parameters:
+        - name: programName
+          in: path
+          required: true
+          description: Program name to delete
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Program and related data deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  program_name:
+                    type: string
+                  deleted:
+                    type: object
+                    additionalProperties:
+                      type: integer
+        '404':
+          description: Program not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal error while deleting program
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /subdomains:
     get:
