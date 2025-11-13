@@ -246,6 +246,67 @@ paths:
                 type: string
                 example: "=== PROGRAMS ===\nprogram1\nprogram2\n\n=== SUBDOMAINS ===\nsubdomain1.example.com\nsubdomain2.example.com"
 
+  /port-scanner:
+    get:
+      summary: Port scanner lookup
+      description: Retrieve open port details for a specific domain or list domains with open ports for a program
+      operationId: getPortScannerResults
+      tags:
+        - Ports
+      parameters:
+        - name: domain
+          in: query
+          description: Return open ports for this exact domain (subdomain)
+          required: false
+          schema:
+            type: string
+        - name: program_name
+          in: query
+          description: Return domains and ports associated with this program
+          required: false
+          schema:
+            type: string
+        - name: json
+          in: query
+          description: Response format (true for JSON, false for plain text)
+          required: false
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/PortScannerDomain'
+                  - type: object
+                    properties:
+                      program_name:
+                        type: string
+                        description: Program the domains belong to
+                      domains:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PortScannerDomain'
+            text/plain:
+              schema:
+                type: string
+                example: "example.com: 80, 443"
+        '400':
+          description: Missing filter parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Domain not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   schemas:
     Program:
@@ -388,6 +449,37 @@ components:
           type: string
           format: date-time
           description: Last update timestamp
+
+    PortScannerDomain:
+      type: object
+      properties:
+        subdomain:
+          type: string
+          description: Domain or subdomain that has open ports
+        ports:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortScannerPort'
+
+    PortScannerPort:
+      type: object
+      properties:
+        port:
+          type: integer
+          description: Open port number
+        protocol:
+          type: string
+          description: Protocol detected on the port
+        service:
+          type: string
+          description: Service associated with the port
+        program_name:
+          type: string
+          description: Program associated with the port (present when querying by domain)
+        last_update:
+          type: string
+          format: date-time
+          description: Last time the port information was updated
 
     Error:
       type: object

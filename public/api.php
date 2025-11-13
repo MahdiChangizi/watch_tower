@@ -227,6 +227,113 @@ try {
                 send_text(implode("\n", array_filter($entries)));
             }
             break;
+
+        case 'port-scanner':
+            $conditions = [];
+            $params = [];
+
+            if ($domain) {
+                $conditions[] = "subdomain = :subdomain";
+                $params[':subdomain'] = $domain;
+            }
+
+            if ($program_name) {
+                $conditions[] = "program_name = :program_name";
+                $params[':program_name'] = $program_name;
+            }
+
+            if (!$domain && !$program_name) {
+                send_json(['error' => 'Provide either a domain or a program_name parameter'], 400);
+                break;
+            }
+
+            $where_clause = !empty($conditions) ? 'WHERE ' . implode(' AND ', $conditions) : '';
+            $stmt = $db->prepare("SELECT * FROM ports $where_clause ORDER BY subdomain ASC, port ASC");
+            $stmt->execute($params);
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $data = parse_jsonb_fields($data);
+
+            if ($domain) {
+                $port_entries = array_map(function ($row) {
+                    return [
+                        'port' => isset($row['port']) ? (int) $row['port'] : null,
+                        'protocol' => $row['protocol'] ?? null,
+                        'service' => $row['service'] ?? null,
+                        'program_name' => $row['program_name'] ?? null,
+                        'last_update' => $row['last_update'] ?? null,
+                    ];
+                }, $data);
+                $port_entries = array_values(array_filter($port_entries, function ($entry) {
+                    return $entry['port'] !== null;
+                }));
+
+                if (empty($port_entries)) {
+                    send_json(['error' => 'No open ports found for the requested domain', 'code' => 404], 404);
+                    break;
+                }
+
+                $result = [
+                    'subdomain' => $domain,
+                    'ports' => $port_entries,
+                ];
+
+                if ($is_json) {
+                    send_json($result);
+                } else {
+                    $lines = array_map(function ($entry) {
+                        return sprintf(
+                            '%s/%s (%s)',
+                            $entry['port'],
+                            $entry['protocol'] ?? 'unknown',
+                            $entry['service'] ?? 'unknown'
+                        );
+                    }, $port_entries);
+                    send_text(implode("\n", $lines));
+                }
+            } else {
+                $grouped = [];
+                foreach ($data as $row) {
+                    $subdomain = $row['subdomain'] ?? null;
+                    $port = isset($row['port']) ? (int) $row['port'] : null;
+
+                    if (!$subdomain || $port === null) {
+                        continue;
+                    }
+
+                    if (!isset($grouped[$subdomain])) {
+                        $grouped[$subdomain] = [
+                            'subdomain' => $subdomain,
+                            'ports' => [],
+                        ];
+                    }
+
+                    $grouped[$subdomain]['ports'][] = [
+                        'port' => $port,
+                        'protocol' => $row['protocol'] ?? null,
+                        'service' => $row['service'] ?? null,
+                        'last_update' => $row['last_update'] ?? null,
+                    ];
+                }
+
+                $result = [
+                    'program_name' => $program_name,
+                    'domains' => array_values($grouped),
+                ];
+
+                if ($is_json) {
+                    send_json($result);
+                } else {
+                    $lines = [];
+                    foreach ($result['domains'] as $domain_entry) {
+                        $ports_list = implode(', ', array_map(function ($port_entry) {
+                            return (string) $port_entry['port'];
+                        }, $domain_entry['ports']));
+                        $lines[] = sprintf('%s: %s', $domain_entry['subdomain'], $ports_list);
+                    }
+                    send_text(implode("\n", $lines));
+                }
+            }
+            break;
             
         case 'live-subdomains':
         case 'lives':
