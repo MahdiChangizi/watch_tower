@@ -12,6 +12,34 @@ It is a small PHP service that uses the following tools:
 - crt.sh
 - whois
 
+## Automated setup
+
+Clone the repository, make the helper executable, and run it:
+
+```bash
+chmod +x ./setup_watch_tower.sh
+./setup_watch_tower.sh
+```
+
+The script installs all required Ubuntu packages (PHP, Apache, PostgreSQL, Composer), fetches Go + the reconnaissance binaries (dnsx, httpx, subfinder, nuclei, chaos, samoscout, waybackurls, naabu), installs Composer dependencies, creates the `watch` database, applies the SQL schemas, seeds a `.env`, and deploys the app to `/var/www/watch_tower` with an Apache virtual host pointing at `public/`.
+
+Tweak the behavior with environment variables before running it:
+
+- `APP_ROOT` (default `/var/www/watch_tower`)
+- `SERVER_NAME` (default `watchtower.local`)
+- `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`
+- `WEBHOOK_URL`, `DISCORD_NOTIFICATIONS_ENABLED`, `PDCP_API_KEY`
+- `GO_VERSION` (default `1.23.5`)
+- `CONFIGURE_APACHE` (`true`/`false`)
+
+Example for a remote host name and custom webhook:
+
+```bash
+SERVER_NAME=watch.example.com \
+WEBHOOK_URL=https://discord.com/api/webhooks/... \
+./setup_watch_tower.sh
+```
+
 ## Nuclei
 The Nuclei scan and find you, subdomain takover
 ```bash
