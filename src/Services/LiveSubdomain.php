@@ -92,15 +92,15 @@ final class LiveSubdomain
 
             $this->logChange(sprintf('Inserted new live subdomain: %s', $subdomain));
 
-            if ($this->messenger) {
-                $this->messenger->send(
-                    sprintf(
-                        "```%s (fresh live) has been added to '%s'```",
-                        $subdomain,
-                        $program_name
-                    )
-                );
-            }
+            // if ($this->messenger) {
+            //     $this->messenger->send(
+            //         sprintf(
+            //             "```%s (fresh live) has been added to '%s'```",
+            //             $subdomain,
+            //             $program_name
+            //         )
+            //     );
+            // }
 
             return true;
         } catch (PDOException $exception) {

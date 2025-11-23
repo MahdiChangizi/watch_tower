@@ -87,14 +87,14 @@ final class Port
                 ]);
 
                 if ($this->messenger && ($existing['service'] ?? '') !== $service) {
-                    $this->messenger->send(sprintf(
-                        "```%s:%d (%s) service changed from '%s' to '%s'```",
-                        $subdomain,
-                        $port,
-                        $protocol,
-                        $existing['service'] ?? 'unknown',
-                        $service !== '' ? $service : 'unknown'
-                    ));
+                    // $this->messenger->send(sprintf(
+                    //     "```%s:%d (%s) service changed from '%s' to '%s'```",
+                    //     $subdomain,
+                    //     $port,
+                    //     $protocol,
+                    //     $existing['service'] ?? 'unknown',
+                    //     $service !== '' ? $service : 'unknown'
+                    // ));
                 }
 
                 return true;

@@ -133,7 +133,7 @@ final class Http
                 );
             }
 
-            error_log(sprintf('[%s] Inserted new http service: %s', $now, $subdomain));
+            // error_log(sprintf('[%s] Inserted new http service: %s', $now, $subdomain));
 
             return true;
         } catch (PDOException $exception) {
